@@ -1,0 +1,6 @@
+.tools/
+__pycache__/
+*.pyc
+coverage.out
+go.work
+go.work.sum
