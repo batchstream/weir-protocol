@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 
+PROTOCOL_MODULE = 'github.com/batchstream/weir-protocol'
 FORBIDDEN_MODULES = {'github.com/batchstream/weir', 'github.com/batchstream/weir-go'}
 
 
@@ -27,6 +28,19 @@ def check_modules(modules):
             raise ValueError('protocol module must not use replacements: ' + name)
 
 
+def check_graph(raw):
+    for line in raw.splitlines():
+        edge = line.split()
+        if len(edge) != 2:
+            raise ValueError('invalid module graph edge')
+        for node in edge:
+            module = node.split('@', 1)[0]
+            if module in FORBIDDEN_MODULES:
+                raise ValueError('raw protocol graph depends on Server or SDK: ' + node)
+            if module == PROTOCOL_MODULE and '@' in node:
+                raise ValueError('raw protocol graph returns to a versioned protocol module: ' + node)
+
+
 def check_packages(packages):
     for package in packages:
         name = package['ImportPath']
@@ -37,9 +51,12 @@ def check_packages(packages):
 def main():
     root = Path(__file__).resolve().parent.parent
     go_bin = os.environ.get('WEIR_PROTOCOL_GO', 'go')
-    raw_modules = subprocess.check_output([go_bin, 'list', '-m', '-json', 'all'], cwd=root, text=True, timeout=120)
+    go_env = dict(os.environ, GOWORK='off')
+    raw_modules = subprocess.check_output([go_bin, 'list', '-m', '-json', 'all'], cwd=root, env=go_env, text=True, timeout=120)
     check_modules(objects(raw_modules))
-    raw_packages = subprocess.check_output([go_bin, 'list', '-deps', '-test', '-json', './...'], cwd=root, text=True, timeout=120)
+    raw_graph = subprocess.check_output([go_bin, 'mod', 'graph'], cwd=root, env=go_env, text=True, timeout=120)
+    check_graph(raw_graph)
+    raw_packages = subprocess.check_output([go_bin, 'list', '-deps', '-test', '-json', './...'], cwd=root, env=go_env, text=True, timeout=120)
     check_packages(objects(raw_packages))
     print('Standalone protocol production/test module and package graph passed')
 

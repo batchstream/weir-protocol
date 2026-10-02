@@ -39,8 +39,10 @@ Default tests use task-owned loopback DNS and in-memory protocol data. They do n
 contact external endpoints, start databases, or change host DNS. Descriptor tests
 protect the public RPC/field contract and exclude internal peer definitions.
 The dependency check examines every selected module, including transitive and
-test requirements, rejects Server/SDK dependencies and replacements, then checks
-the complete production and test package graph.
+test requirements, rejects Server/SDK dependencies and replacements, examines
+all raw module-graph edges including versioned protocol return edges, then checks
+the complete production and test package graph. It forces workspace mode off
+for every Go subprocess so unrelated checkouts cannot mask module boundaries.
 
 ## Generate
 
