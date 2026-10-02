@@ -29,7 +29,11 @@ jobs:
         with:
           go-version: '1.27.1'
           cache: true
-      - run: go mod download
+      - name: Prepare complete module cache
+        run: |
+          module_dir=$(mktemp -d "$RUNNER_TEMP/weir-protocol-module.XXXXXX")
+          cp go.mod go.sum "$module_dir/"
+          (cd "$module_dir" && go mod download all)
       - name: Offline validation
         env:
           GOPROXY: 'off'

@@ -27,13 +27,19 @@ to the Weir server repository.
 ## Validate
 
 ```sh
-go mod download
+module_dir=$(mktemp -d)
+cp go.mod go.sum "$module_dir/"
+(cd "$module_dir" && GOWORK=off go mod download all)
 GOWORK=off GOPROXY=off GOSUMDB=off go mod verify
 GOWORK=off GOPROXY=off GOSUMDB=off go test -race -count=1 ./...
 GOWORK=off GOPROXY=off GOSUMDB=off go vet ./...
 GOWORK=off GOPROXY=off GOSUMDB=off python3 scripts/check_dependencies.py
 python3 -m unittest discover -s scripts -p '*_test.py'
 ```
+
+Prepare the complete module cache in a temporary module copy before disabling
+network access. `download all` includes graph/test metadata that lazy runtime
+downloads omit; its extra ZIP checksums stay outside the committed `go.sum`.
 
 Default tests use task-owned loopback DNS and in-memory protocol data. They do not
 contact external endpoints, start databases, or change host DNS. Descriptor tests
