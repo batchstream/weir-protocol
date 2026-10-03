@@ -72,12 +72,12 @@ func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
 }
 
 func TestExecuteEnvelopeIDsStoreNamesAndFragments(t *testing.T) {
-	request := &pb.ExecuteRequest{RequestId: 9, StoreName: "records", CallPayload: []byte{1}}
+	request := &pb.ExecuteRequest{RequestId: 9, StoreName: "records", CommandPayload: []byte{1}}
 	if err := ValidateExecuteRequest(request, "records", 2); err != nil {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*pb.ExecuteRequest){
-		func(r *pb.ExecuteRequest) { r.RequestId = 0 }, func(r *pb.ExecuteRequest) { r.RequestId = 2 }, func(r *pb.ExecuteRequest) { r.StoreName = "other" }, func(r *pb.ExecuteRequest) { r.CallPayload = nil }, func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0x20, 1}) },
+		func(r *pb.ExecuteRequest) { r.RequestId = 0 }, func(r *pb.ExecuteRequest) { r.RequestId = 2 }, func(r *pb.ExecuteRequest) { r.StoreName = "other" }, func(r *pb.ExecuteRequest) { r.CommandPayload = nil }, func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0x20, 1}) },
 	} {
 		copied := proto.Clone(request).(*pb.ExecuteRequest)
 		mutate(copied)
@@ -99,28 +99,28 @@ func TestExecuteEnvelopeIDsStoreNamesAndFragments(t *testing.T) {
 	}
 }
 
-func TestCallVersionUnknownFieldsAndRelativeTarget(t *testing.T) {
+func TestCommandVersionUnknownFieldsAndRelativeTarget(t *testing.T) {
 	request := &pb.ReadRequest{Resource: "data/s:key"}
-	value := &pb.Call_Read{Read: request}
-	call := &pb.Call{Version: 1, Operation: value}
-	encode := func(c *pb.Call) []byte {
+	value := &pb.Command_Read{Read: request}
+	command := &pb.Command{Version: 1, Operation: value}
+	encode := func(c *pb.Command) []byte {
 		data, err := proto.Marshal(c)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return data
 	}
-	if _, err := DecodeCall(encode(call)); err != nil {
+	if _, err := DecodeCommand(encode(command)); err != nil {
 		t.Fatal(err)
 	}
-	for _, mutate := range []func(*pb.Call){func(c *pb.Call) { c.Version = 2 }, func(c *pb.Call) { c.Operation = nil }, func(c *pb.Call) { c.GetRead().Resource = "weir://records/data/s:key" }, func(c *pb.Call) { c.GetRead().Resource = "/data/s:key" }, func(c *pb.Call) { c.GetRead().Resource = "data/%6B" }, func(c *pb.Call) { c.GetRead().ProtoReflect().SetUnknown([]byte{0x20, 1}) }} {
-		copied := proto.Clone(call).(*pb.Call)
+	for _, mutate := range []func(*pb.Command){func(c *pb.Command) { c.Version = 2 }, func(c *pb.Command) { c.Operation = nil }, func(c *pb.Command) { c.GetRead().Resource = "weir://records/data/s:key" }, func(c *pb.Command) { c.GetRead().Resource = "/data/s:key" }, func(c *pb.Command) { c.GetRead().Resource = "data/%6B" }, func(c *pb.Command) { c.GetRead().ProtoReflect().SetUnknown([]byte{0x20, 1}) }} {
+		copied := proto.Clone(command).(*pb.Command)
 		mutate(copied)
-		if _, err := DecodeCall(encode(copied)); err == nil {
-			t.Fatal("accepted invalid call", copied)
+		if _, err := DecodeCommand(encode(copied)); err == nil {
+			t.Fatal("accepted invalid command", copied)
 		}
 	}
-	if _, err := DecodeCall([]byte{0xff}); err == nil {
+	if _, err := DecodeCommand([]byte{0xff}); err == nil {
 		t.Fatal("malformed encoding accepted")
 	}
 }

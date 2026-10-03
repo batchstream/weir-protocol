@@ -264,9 +264,9 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 }
 
 // ValidateExecuteRequest checks the execution envelope. One RPC stays bound to
-// the Store selected by its first request; Call decoding happens at that Store.
+// the Store selected by its first request; Command decoding happens at that Store.
 func ValidateExecuteRequest(req *pb.ExecuteRequest, storeName string, lastID uint64) error {
-	if req == nil || req.RequestId == 0 || req.RequestId <= lastID || proto.Size(req) > MaxFrame || len(req.CallPayload) == 0 || len(req.CallPayload) > MaxPayload {
+	if req == nil || req.RequestId == 0 || req.RequestId <= lastID || proto.Size(req) > MaxFrame || len(req.CommandPayload) == 0 || len(req.CommandPayload) > MaxPayload {
 		return fmt.Errorf("invalid request ID or payload bounds")
 	}
 	if !ValidStoreName(req.StoreName) || storeName != "" && req.StoreName != storeName {
@@ -292,41 +292,41 @@ func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
 	return nil
 }
 
-func DecodeCall(payload []byte) (*pb.Call, error) {
+func DecodeCommand(payload []byte) (*pb.Command, error) {
 	if len(payload) == 0 || len(payload) > MaxPayload {
-		return nil, fmt.Errorf("invalid call bounds")
+		return nil, fmt.Errorf("invalid command bounds")
 	}
-	call := &pb.Call{}
-	if err := proto.Unmarshal(payload, call); err != nil {
-		return nil, fmt.Errorf("invalid call encoding")
+	command := &pb.Command{}
+	if err := proto.Unmarshal(payload, command); err != nil {
+		return nil, fmt.Errorf("invalid command encoding")
 	}
-	if call.Version != 1 || call.Operation == nil || hasUnknown(call.ProtoReflect()) {
-		return nil, fmt.Errorf("unsupported call version or fields")
+	if command.Version != 1 || command.Operation == nil || hasUnknown(command.ProtoReflect()) {
+		return nil, fmt.Errorf("unsupported command version or fields")
 	}
 	var target string
-	switch operation := call.Operation.(type) {
-	case *pb.Call_Read:
+	switch operation := command.Operation.(type) {
+	case *pb.Command_Read:
 		if operation.Read != nil {
 			target = operation.Read.Resource
 		}
-	case *pb.Call_Mutate:
+	case *pb.Command_Mutate:
 		if operation.Mutate != nil {
 			target = operation.Mutate.Resource
 		}
-	case *pb.Call_Scan:
+	case *pb.Command_Scan:
 		if operation.Scan != nil {
 			target = operation.Scan.Resource
 		}
-	case *pb.Call_Native:
+	case *pb.Command_Native:
 		if operation.Native != nil && operation.Native.Open != nil {
 			target = operation.Native.Open.Resource
 		}
 	}
 	_, segments, err := ParseResource("weir://target/" + target)
 	if err != nil || len(segments) == 0 {
-		return nil, fmt.Errorf("call requires a canonical relative target")
+		return nil, fmt.Errorf("command requires a canonical relative target")
 	}
-	return call, nil
+	return command, nil
 }
 
 // Unknown fields are rejected throughout the typed payload. Adding fields to
