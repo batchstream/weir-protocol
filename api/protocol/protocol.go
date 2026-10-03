@@ -43,38 +43,44 @@ func ParseResource(raw string) (string, []string, error) {
 		return "", nil, fmt.Errorf("invalid store")
 	}
 	segments := make([]string, 0, len(pieces)-1)
-	for _, p := range pieces[1:] {
-		s, err := url.PathUnescape(p)
-		if err != nil || s == "" || s == "." || s == ".." || !utf8.ValidString(s) {
-			return "", nil, fmt.Errorf("invalid segment")
+	for _, piece := range pieces[1:] {
+		segment, err := decodeResourceSegment(piece)
+		if err != nil {
+			return "", nil, err
 		}
-		for _, r := range s {
-			if unicode.IsControl(r) {
-				return "", nil, fmt.Errorf("control character")
-			}
-		}
-		if EncodeSegment(s) != p {
-			return "", nil, fmt.Errorf("noncanonical segment")
-		}
-		segments = append(segments, s)
+		segments = append(segments, segment)
 	}
 	return pieces[0], segments, nil
 }
 
 func EncodeSegment(s string) string {
-	const hex = "0123456789ABCDEF"
-	var b strings.Builder
+	escapes := 0
 	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("-._~:", rune(c)) {
-			b.WriteByte(c)
-		} else {
-			b.WriteByte('%')
-			b.WriteByte(hex[c>>4])
-			b.WriteByte(hex[c&15])
+		if !unescapedSegmentByte(s[i]) {
+			escapes++
 		}
 	}
-	return b.String()
+	if escapes == 0 {
+		return s
+	}
+	const hex = "0123456789ABCDEF"
+	var builder strings.Builder
+	builder.Grow(len(s) + 2*escapes)
+	for i := 0; i < len(s); i++ {
+		value := s[i]
+		if unescapedSegmentByte(value) {
+			builder.WriteByte(value)
+		} else {
+			builder.WriteByte('%')
+			builder.WriteByte(hex[value>>4])
+			builder.WriteByte(hex[value&15])
+		}
+	}
+	return builder.String()
+}
+
+func unescapedSegmentByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || value == '-' || value == '.' || value == '_' || value == '~' || value == ':'
 }
 
 func Fail(code pb.FailureCode, message string) *pb.Failure {
@@ -134,78 +140,89 @@ func Validate(op *pb.Operation, store string) *pb.Failure {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized operation")
 	}
 	var resource string
-	var docs []*pb.Document
-	if r := op.GetRead(); r != nil {
-		resource = r.Resource
-		if r.ReadMediaType != "" && !validMedia(r.ReadMediaType) {
-			return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid media type")
-		}
-		if r.AdapterOptions != nil {
-			docs = append(docs, r.AdapterOptions)
-		}
-	} else if m := op.GetMutate(); m != nil {
-		resource = m.Resource
-		if m.Action == nil {
-			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing action")
-		}
-		if m.AdapterOptions != nil {
-			docs = append(docs, m.AdapterOptions)
-		}
-		switch a := m.Action.(type) {
-		case *pb.MutateRequest_Put:
-			docs = append(docs, a.Put)
-		case *pb.MutateRequest_Create:
-			docs = append(docs, a.Create)
-		case *pb.MutateRequest_Replace:
-			docs = append(docs, a.Replace)
-		case *pb.MutateRequest_Delete:
-			if a.Delete == nil {
-				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing delete")
-			}
-		case *pb.MutateRequest_AtomicTransform:
-			if a.AtomicTransform == nil || a.AtomicTransform.Form == nil {
-				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing transform")
-			}
-			switch transform := a.AtomicTransform.Form.(type) {
-			case *pb.Transform_Program:
-				program := transform.Program
-				if program == nil ||
-					program.Runtime == "" ||
-					len(program.Source) == 0 ||
-					len(program.Source) > MaxExpression ||
-					!utf8.Valid(program.Source) ||
-					strings.IndexByte(string(program.Source), 0) >= 0 ||
-					strings.HasPrefix(string(program.Source), "\x1bLua") {
-					return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized program transform")
-				}
-				if program.Runtime != "lua.v1" {
-					return Fail(pb.FailureCode_UNSUPPORTED, "program runtime is unsupported")
-				}
-				if program.Input != nil {
-					docs = append(docs, program.Input)
-				}
-			case *pb.Transform_BackendExpression:
-				if transform.BackendExpression == nil || len(transform.BackendExpression.Data) == 0 || len(transform.BackendExpression.Data) > MaxExpression {
-					return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized backend expression")
-				}
-				docs = append(docs, transform.BackendExpression)
-			default:
-				return Fail(pb.FailureCode_INVALID_ARGUMENT, "unknown transform")
-			}
-		default:
-			return Fail(pb.FailureCode_INVALID_ARGUMENT, "unknown action")
-		}
+	var failure *pb.Failure
+	if read := op.GetRead(); read != nil {
+		resource = read.Resource
+		failure = validateReadFields(read)
+	} else if mutation := op.GetMutate(); mutation != nil {
+		resource = mutation.Resource
+		failure = validateMutationFields(mutation)
 	} else {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing operation")
+	}
+	if failure != nil {
+		return failure
 	}
 	name, segments, err := ParseResource(resource)
 	if err != nil || len(segments) == 0 || name != store {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid or wrong-store resource")
 	}
-	for _, d := range docs {
-		if d == nil || !validMedia(d.MediaType) || len(d.Data) > MaxDocument {
-			return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
+	return nil
+}
+
+func validateReadFields(read *pb.ReadRequest) *pb.Failure {
+	if read.ReadMediaType != "" && !validMedia(read.ReadMediaType) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid media type")
+	}
+	if read.AdapterOptions != nil && !validDocument(read.AdapterOptions, MaxDocument) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
+	}
+	return nil
+}
+
+func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
+	if mutation.AdapterOptions != nil && !validDocument(mutation.AdapterOptions, MaxDocument) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
+	}
+	var document *pb.Document
+	switch action := mutation.Action.(type) {
+	case *pb.MutateRequest_Put:
+		document = action.Put
+	case *pb.MutateRequest_Create:
+		document = action.Create
+	case *pb.MutateRequest_Replace:
+		document = action.Replace
+	case *pb.MutateRequest_Delete:
+		if action.Delete == nil {
+			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing delete")
 		}
+		return nil
+	case *pb.MutateRequest_AtomicTransform:
+		if action.AtomicTransform == nil || action.AtomicTransform.Form == nil {
+			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing transform")
+		}
+		switch transform := action.AtomicTransform.Form.(type) {
+		case *pb.Transform_Program:
+			program := transform.Program
+			if program == nil ||
+				program.Runtime == "" ||
+				len(program.Source) == 0 ||
+				len(program.Source) > MaxExpression ||
+				!utf8.Valid(program.Source) ||
+				strings.IndexByte(string(program.Source), 0) >= 0 ||
+				strings.HasPrefix(string(program.Source), "\x1bLua") {
+				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized program transform")
+			}
+			if program.Runtime != "lua.v1" {
+				return Fail(pb.FailureCode_UNSUPPORTED, "program runtime is unsupported")
+			}
+			if program.Input != nil && !validDocument(program.Input, MaxDocument) {
+				return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
+			}
+			return nil
+		case *pb.Transform_BackendExpression:
+			if transform.BackendExpression == nil || len(transform.BackendExpression.Data) == 0 || len(transform.BackendExpression.Data) > MaxExpression {
+				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized backend expression")
+			}
+			document = transform.BackendExpression
+		default:
+			return Fail(pb.FailureCode_INVALID_ARGUMENT, "unknown transform")
+		}
+	default:
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or unknown action")
+	}
+	if !validDocument(document, MaxDocument) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
 	}
 	return nil
 }
@@ -312,8 +329,35 @@ func ValidateCommand(command *pb.Command) error {
 }
 
 func validRelativeResource(resource string) bool {
-	_, segments, err := ParseResource("weir://target/" + resource)
-	return err == nil && len(segments) != 0
+	if resource == "" || len(resource) > MaxURI-len("weir://target/") {
+		return false
+	}
+	for {
+		piece, remaining, more := strings.Cut(resource, "/")
+		if _, err := decodeResourceSegment(piece); err != nil {
+			return false
+		}
+		if !more {
+			return true
+		}
+		resource = remaining
+	}
+}
+
+func decodeResourceSegment(raw string) (string, error) {
+	segment, err := url.PathUnescape(raw)
+	if err != nil || segment == "" || segment == "." || segment == ".." || !utf8.ValidString(segment) {
+		return "", fmt.Errorf("invalid segment")
+	}
+	for _, value := range segment {
+		if unicode.IsControl(value) {
+			return "", fmt.Errorf("control character")
+		}
+	}
+	if EncodeSegment(segment) != raw {
+		return "", fmt.Errorf("noncanonical segment")
+	}
+	return segment, nil
 }
 
 // Unknown fields are rejected throughout the typed payload. Adding fields to

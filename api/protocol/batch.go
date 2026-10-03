@@ -14,13 +14,10 @@ func ValidateReadBatchRequest(request *pb.ReadBatchRequest) error {
 		return fmt.Errorf("Read requires a valid Store and nonempty requests within the batch byte bound")
 	}
 	for index, item := range request.Requests {
-		if item == nil || !validRelativeResource(item.Resource) {
+		if item == nil || !validBatchResource(request.StoreName, item.Resource) {
 			return fmt.Errorf("Read request %d requires a canonical relative resource", index)
 		}
-		read := &pb.ReadRequest{Resource: "weir://" + request.StoreName + "/" + item.Resource, ReadMediaType: item.ReadMediaType, AdapterOptions: item.AdapterOptions}
-		variant := &pb.Operation_Read{Read: read}
-		operation := &pb.Operation{Operation: variant}
-		if failure := Validate(operation, request.StoreName); failure != nil {
+		if failure := validateReadFields(item); failure != nil {
 			return fmt.Errorf("Read request %d: %s", index, failure.Message)
 		}
 	}
@@ -32,13 +29,10 @@ func ValidateMutateBatchRequest(request *pb.MutateBatchRequest) error {
 		return fmt.Errorf("Mutate requires a valid Store and nonempty requests within the batch byte bound")
 	}
 	for index, item := range request.Requests {
-		if item == nil || !validRelativeResource(item.Resource) {
+		if item == nil || !validBatchResource(request.StoreName, item.Resource) {
 			return fmt.Errorf("Mutate request %d requires a canonical relative resource", index)
 		}
-		mutation := &pb.MutateRequest{Resource: "weir://" + request.StoreName + "/" + item.Resource, AdapterOptions: item.AdapterOptions, Action: item.Action}
-		variant := &pb.Operation_Mutate{Mutate: mutation}
-		operation := &pb.Operation{Operation: variant}
-		if failure := Validate(operation, request.StoreName); failure != nil {
+		if failure := validateMutationFields(item); failure != nil {
 			return fmt.Errorf("Mutate request %d: %s", index, failure.Message)
 		}
 	}
@@ -46,7 +40,8 @@ func ValidateMutateBatchRequest(request *pb.MutateBatchRequest) error {
 }
 
 func ValidateReadBatchResponse(response *pb.ReadBatchResponse, count int) error {
-	if response == nil || len(response.Results) != count || proto.Size(response) > MaxBatchResponseBytes || hasUnknown(response.ProtoReflect()) {
+	// Each result validator checks its nested fields; inspect this envelope once.
+	if response == nil || len(response.Results) != count || proto.Size(response) > MaxBatchResponseBytes || len(response.ProtoReflect().GetUnknown()) != 0 {
 		return fmt.Errorf("invalid Read response count, fields or byte bound")
 	}
 	for index, result := range response.Results {
@@ -58,7 +53,7 @@ func ValidateReadBatchResponse(response *pb.ReadBatchResponse, count int) error 
 }
 
 func ValidateMutateBatchResponse(response *pb.MutateBatchResponse, count int) error {
-	if response == nil || len(response.Results) != count || proto.Size(response) > MaxBatchResponseBytes || hasUnknown(response.ProtoReflect()) {
+	if response == nil || len(response.Results) != count || proto.Size(response) > MaxBatchResponseBytes || len(response.ProtoReflect().GetUnknown()) != 0 {
 		return fmt.Errorf("invalid Mutate response count, fields or byte bound")
 	}
 	for index, result := range response.Results {
@@ -97,4 +92,9 @@ func ValidateMutationResult(result *pb.MutationResult) error {
 		return fmt.Errorf("unapplied mutation requires a failure")
 	}
 	return nil
+}
+
+func validBatchResource(store, resource string) bool {
+	// The normalized Store URI must also fit MaxURI.
+	return len(resource) <= MaxURI-len("weir://")-len(store)-1 && validRelativeResource(resource)
 }
