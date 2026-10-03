@@ -19,11 +19,11 @@ message ResolveStoreResponse {
   uint64 cache_ttl_ms = 3;
 }
 // request_id is nonzero and strictly increasing within one RPC; gaps are allowed.
-// call_payload is exactly one protobuf-encoded, versioned Call for store_name.
+// command_payload is exactly one protobuf-encoded, versioned Command for store_name.
 message ExecuteRequest {
   uint64 request_id = 1;
   string store_name = 2;
-  bytes call_payload = 3;
+  bytes command_payload = 3;
 }
 // event_fragment carries a length-delimited protobuf Event sequence, split at
 // arbitrary byte boundaries. A separate empty request_complete frame completes
@@ -34,16 +34,16 @@ message ExecuteResponse {
   bytes event_fragment = 2;
   bool request_complete = 3;
 }
-message Call {
+message Command {
   uint32 version = 1;
   oneof operation {
     ReadRequest read = 10;
     MutateRequest mutate = 11;
     ScanRequest scan = 12;
-    NativeCall native = 13;
+    NativeRequest native = 13;
   }
 }
-message NativeCall { NativeOpen open = 1; bytes body = 2; }
+message NativeRequest { NativeOpen open = 1; bytes body = 2; }
 message Event {
   uint32 version = 1;
   oneof value {

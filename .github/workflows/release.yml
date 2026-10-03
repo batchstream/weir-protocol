@@ -1,0 +1,41 @@
+name: Publish protocol version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable semantic version
+        required: true
+        default: v0.1.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: protocol-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check version and exact main commit
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python3 scripts/release.py --version "$VERSION" --expected-commit "$GITHUB_SHA"
+      - name: Publish validated commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release create "$VERSION" --target "$GITHUB_SHA" --title "$VERSION" --generate-notes

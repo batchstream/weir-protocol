@@ -314,14 +314,14 @@ func (x *ResolveStoreResponse) GetCacheTtlMs() uint64 {
 }
 
 // request_id is nonzero and strictly increasing within one RPC; gaps are allowed.
-// call_payload is exactly one protobuf-encoded, versioned Call for store_name.
+// command_payload is exactly one protobuf-encoded, versioned Command for store_name.
 type ExecuteRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestId     uint64                 `protobuf:"varint,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StoreName     string                 `protobuf:"bytes,2,opt,name=store_name,json=storeName,proto3" json:"store_name,omitempty"`
-	CallPayload   []byte                 `protobuf:"bytes,3,opt,name=call_payload,json=callPayload,proto3" json:"call_payload,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	RequestId      uint64                 `protobuf:"varint,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	StoreName      string                 `protobuf:"bytes,2,opt,name=store_name,json=storeName,proto3" json:"store_name,omitempty"`
+	CommandPayload []byte                 `protobuf:"bytes,3,opt,name=command_payload,json=commandPayload,proto3" json:"command_payload,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ExecuteRequest) Reset() {
@@ -368,9 +368,9 @@ func (x *ExecuteRequest) GetStoreName() string {
 	return ""
 }
 
-func (x *ExecuteRequest) GetCallPayload() []byte {
+func (x *ExecuteRequest) GetCommandPayload() []byte {
 	if x != nil {
-		return x.CallPayload
+		return x.CommandPayload
 	}
 	return nil
 }
@@ -439,34 +439,34 @@ func (x *ExecuteResponse) GetRequestComplete() bool {
 	return false
 }
 
-type Call struct {
+type Command struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Version uint32                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
 	// Types that are valid to be assigned to Operation:
 	//
-	//	*Call_Read
-	//	*Call_Mutate
-	//	*Call_Scan
-	//	*Call_Native
-	Operation     isCall_Operation `protobuf_oneof:"operation"`
+	//	*Command_Read
+	//	*Command_Mutate
+	//	*Command_Scan
+	//	*Command_Native
+	Operation     isCommand_Operation `protobuf_oneof:"operation"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Call) Reset() {
-	*x = Call{}
+func (x *Command) Reset() {
+	*x = Command{}
 	mi := &file_api_weir_v1_store_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Call) String() string {
+func (x *Command) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Call) ProtoMessage() {}
+func (*Command) ProtoMessage() {}
 
-func (x *Call) ProtoReflect() protoreflect.Message {
+func (x *Command) ProtoReflect() protoreflect.Message {
 	mi := &file_api_weir_v1_store_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -478,90 +478,90 @@ func (x *Call) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Call.ProtoReflect.Descriptor instead.
-func (*Call) Descriptor() ([]byte, []int) {
+// Deprecated: Use Command.ProtoReflect.Descriptor instead.
+func (*Command) Descriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *Call) GetVersion() uint32 {
+func (x *Command) GetVersion() uint32 {
 	if x != nil {
 		return x.Version
 	}
 	return 0
 }
 
-func (x *Call) GetOperation() isCall_Operation {
+func (x *Command) GetOperation() isCommand_Operation {
 	if x != nil {
 		return x.Operation
 	}
 	return nil
 }
 
-func (x *Call) GetRead() *ReadRequest {
+func (x *Command) GetRead() *ReadRequest {
 	if x != nil {
-		if x, ok := x.Operation.(*Call_Read); ok {
+		if x, ok := x.Operation.(*Command_Read); ok {
 			return x.Read
 		}
 	}
 	return nil
 }
 
-func (x *Call) GetMutate() *MutateRequest {
+func (x *Command) GetMutate() *MutateRequest {
 	if x != nil {
-		if x, ok := x.Operation.(*Call_Mutate); ok {
+		if x, ok := x.Operation.(*Command_Mutate); ok {
 			return x.Mutate
 		}
 	}
 	return nil
 }
 
-func (x *Call) GetScan() *ScanRequest {
+func (x *Command) GetScan() *ScanRequest {
 	if x != nil {
-		if x, ok := x.Operation.(*Call_Scan); ok {
+		if x, ok := x.Operation.(*Command_Scan); ok {
 			return x.Scan
 		}
 	}
 	return nil
 }
 
-func (x *Call) GetNative() *NativeCall {
+func (x *Command) GetNative() *NativeRequest {
 	if x != nil {
-		if x, ok := x.Operation.(*Call_Native); ok {
+		if x, ok := x.Operation.(*Command_Native); ok {
 			return x.Native
 		}
 	}
 	return nil
 }
 
-type isCall_Operation interface {
-	isCall_Operation()
+type isCommand_Operation interface {
+	isCommand_Operation()
 }
 
-type Call_Read struct {
+type Command_Read struct {
 	Read *ReadRequest `protobuf:"bytes,10,opt,name=read,proto3,oneof"`
 }
 
-type Call_Mutate struct {
+type Command_Mutate struct {
 	Mutate *MutateRequest `protobuf:"bytes,11,opt,name=mutate,proto3,oneof"`
 }
 
-type Call_Scan struct {
+type Command_Scan struct {
 	Scan *ScanRequest `protobuf:"bytes,12,opt,name=scan,proto3,oneof"`
 }
 
-type Call_Native struct {
-	Native *NativeCall `protobuf:"bytes,13,opt,name=native,proto3,oneof"`
+type Command_Native struct {
+	Native *NativeRequest `protobuf:"bytes,13,opt,name=native,proto3,oneof"`
 }
 
-func (*Call_Read) isCall_Operation() {}
+func (*Command_Read) isCommand_Operation() {}
 
-func (*Call_Mutate) isCall_Operation() {}
+func (*Command_Mutate) isCommand_Operation() {}
 
-func (*Call_Scan) isCall_Operation() {}
+func (*Command_Scan) isCommand_Operation() {}
 
-func (*Call_Native) isCall_Operation() {}
+func (*Command_Native) isCommand_Operation() {}
 
-type NativeCall struct {
+type NativeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Open          *NativeOpen            `protobuf:"bytes,1,opt,name=open,proto3" json:"open,omitempty"`
 	Body          []byte                 `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
@@ -569,20 +569,20 @@ type NativeCall struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *NativeCall) Reset() {
-	*x = NativeCall{}
+func (x *NativeRequest) Reset() {
+	*x = NativeRequest{}
 	mi := &file_api_weir_v1_store_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *NativeCall) String() string {
+func (x *NativeRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*NativeCall) ProtoMessage() {}
+func (*NativeRequest) ProtoMessage() {}
 
-func (x *NativeCall) ProtoReflect() protoreflect.Message {
+func (x *NativeRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_api_weir_v1_store_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -594,19 +594,19 @@ func (x *NativeCall) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use NativeCall.ProtoReflect.Descriptor instead.
-func (*NativeCall) Descriptor() ([]byte, []int) {
+// Deprecated: Use NativeRequest.ProtoReflect.Descriptor instead.
+func (*NativeRequest) Descriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *NativeCall) GetOpen() *NativeOpen {
+func (x *NativeRequest) GetOpen() *NativeOpen {
 	if x != nil {
 		return x.Open
 	}
 	return nil
 }
 
-func (x *NativeCall) GetBody() []byte {
+func (x *NativeRequest) GetBody() []byte {
 	if x != nil {
 		return x.Body
 	}
@@ -1912,28 +1912,27 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"store_name\x18\x01 \x01(\tR\tstoreName\x12\x1c\n" +
 	"\tendpoints\x18\x02 \x03(\tR\tendpoints\x12 \n" +
 	"\fcache_ttl_ms\x18\x03 \x01(\x04R\n" +
-	"cacheTtlMs\"q\n" +
+	"cacheTtlMs\"w\n" +
 	"\x0eExecuteRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\x04R\trequestId\x12\x1d\n" +
 	"\n" +
-	"store_name\x18\x02 \x01(\tR\tstoreName\x12!\n" +
-	"\fcall_payload\x18\x03 \x01(\fR\vcallPayload\"\x82\x01\n" +
+	"store_name\x18\x02 \x01(\tR\tstoreName\x12'\n" +
+	"\x0fcommand_payload\x18\x03 \x01(\fR\x0ecommandPayload\"\x82\x01\n" +
 	"\x0fExecuteResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\x04R\trequestId\x12%\n" +
 	"\x0eevent_fragment\x18\x02 \x01(\fR\reventFragment\x12)\n" +
-	"\x10request_complete\x18\x03 \x01(\bR\x0frequestComplete\"\xe6\x01\n" +
-	"\x04Call\x12\x18\n" +
+	"\x10request_complete\x18\x03 \x01(\bR\x0frequestComplete\"\xec\x01\n" +
+	"\aCommand\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\rR\aversion\x12*\n" +
 	"\x04read\x18\n" +
 	" \x01(\v2\x14.weir.v1.ReadRequestH\x00R\x04read\x120\n" +
 	"\x06mutate\x18\v \x01(\v2\x16.weir.v1.MutateRequestH\x00R\x06mutate\x12*\n" +
-	"\x04scan\x18\f \x01(\v2\x14.weir.v1.ScanRequestH\x00R\x04scan\x12-\n" +
-	"\x06native\x18\r \x01(\v2\x13.weir.v1.NativeCallH\x00R\x06nativeB\v\n" +
-	"\toperation\"I\n" +
-	"\n" +
-	"NativeCall\x12'\n" +
+	"\x04scan\x18\f \x01(\v2\x14.weir.v1.ScanRequestH\x00R\x04scan\x120\n" +
+	"\x06native\x18\r \x01(\v2\x16.weir.v1.NativeRequestH\x00R\x06nativeB\v\n" +
+	"\toperation\"L\n" +
+	"\rNativeRequest\x12'\n" +
 	"\x04open\x18\x01 \x01(\v2\x13.weir.v1.NativeOpenR\x04open\x12\x12\n" +
 	"\x04body\x18\x02 \x01(\fR\x04body\"\xad\x02\n" +
 	"\x05Event\x12\x18\n" +
@@ -2077,8 +2076,8 @@ var file_api_weir_v1_store_proto_goTypes = []any{
 	(*ResolveStoreResponse)(nil), // 4: weir.v1.ResolveStoreResponse
 	(*ExecuteRequest)(nil),       // 5: weir.v1.ExecuteRequest
 	(*ExecuteResponse)(nil),      // 6: weir.v1.ExecuteResponse
-	(*Call)(nil),                 // 7: weir.v1.Call
-	(*NativeCall)(nil),           // 8: weir.v1.NativeCall
+	(*Command)(nil),              // 7: weir.v1.Command
+	(*NativeRequest)(nil),        // 8: weir.v1.NativeRequest
 	(*Event)(nil),                // 9: weir.v1.Event
 	(*Empty)(nil),                // 10: weir.v1.Empty
 	(*Document)(nil),             // 11: weir.v1.Document
@@ -2098,11 +2097,11 @@ var file_api_weir_v1_store_proto_goTypes = []any{
 	(*NativeEnd)(nil),            // 25: weir.v1.NativeEnd
 }
 var file_api_weir_v1_store_proto_depIdxs = []int32{
-	13, // 0: weir.v1.Call.read:type_name -> weir.v1.ReadRequest
-	15, // 1: weir.v1.Call.mutate:type_name -> weir.v1.MutateRequest
-	21, // 2: weir.v1.Call.scan:type_name -> weir.v1.ScanRequest
-	8,  // 3: weir.v1.Call.native:type_name -> weir.v1.NativeCall
-	23, // 4: weir.v1.NativeCall.open:type_name -> weir.v1.NativeOpen
+	13, // 0: weir.v1.Command.read:type_name -> weir.v1.ReadRequest
+	15, // 1: weir.v1.Command.mutate:type_name -> weir.v1.MutateRequest
+	21, // 2: weir.v1.Command.scan:type_name -> weir.v1.ScanRequest
+	8,  // 3: weir.v1.Command.native:type_name -> weir.v1.NativeRequest
+	23, // 4: weir.v1.NativeRequest.open:type_name -> weir.v1.NativeOpen
 	20, // 5: weir.v1.Event.result:type_name -> weir.v1.Result
 	11, // 6: weir.v1.Event.document:type_name -> weir.v1.Document
 	24, // 7: weir.v1.Event.head:type_name -> weir.v1.NativeHead
@@ -2151,10 +2150,10 @@ func file_api_weir_v1_store_proto_init() {
 		return
 	}
 	file_api_weir_v1_store_proto_msgTypes[4].OneofWrappers = []any{
-		(*Call_Read)(nil),
-		(*Call_Mutate)(nil),
-		(*Call_Scan)(nil),
-		(*Call_Native)(nil),
+		(*Command_Read)(nil),
+		(*Command_Mutate)(nil),
+		(*Command_Scan)(nil),
+		(*Command_Native)(nil),
 	}
 	file_api_weir_v1_store_proto_msgTypes[6].OneofWrappers = []any{
 		(*Event_Result)(nil),
