@@ -6,10 +6,17 @@ option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 // ResolveStore, then connect directly to a returned Store endpoint for execution.
 service StoreService {
   rpc ResolveStore(ResolveStoreRequest) returns (ResolveStoreResponse);
-  // One finite stream selects a Store on its first valid request. The Store is
-  // fixed for that stream; closing input and receiving final gRPC OK is required
-  // for whole-stream success. The service never forwards business requests.
-  rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
+  // Every batch is bound to one Store and results preserve request order.
+  // Requests are validated together before any operation starts. Mutations are
+  // independent, not transactional, and must never be automatically replayed.
+  // Mutations to the same resource execute in input order, including after
+  // item failures. Different resources may execute concurrently. Across RPCs,
+  // ordering follows the database semantics.
+  rpc Read(ReadBatchRequest) returns (ReadBatchResponse);
+  rpc Mutate(MutateBatchRequest) returns (MutateBatchResponse);
+  // Execute is one finite Scan or Native request with incrementally delivered
+  // typed events. Final gRPC OK is required to commit a Scan checkpoint.
+  rpc Execute(ExecuteRequest) returns (stream ExecuteResponse);
 }
 message ResolveStoreRequest { string store_name = 1; }
 message ResolveStoreResponse {
@@ -18,27 +25,18 @@ message ResolveStoreResponse {
   repeated string endpoints = 2;
   uint64 cache_ttl_ms = 3;
 }
-// request_id is nonzero and strictly increasing within one RPC; gaps are allowed.
-// command_payload is exactly one protobuf-encoded, versioned Command for store_name.
-message ExecuteRequest {
-  uint64 request_id = 1;
-  string store_name = 2;
-  bytes command_payload = 3;
-}
-// event_fragment carries a length-delimited protobuf Event sequence, split at
-// arbitrary byte boundaries. A separate empty request_complete frame completes
-// one request_id. An acknowledged write remains acknowledged if the stream fails;
-// incomplete writes are indeterminate and must never be automatically replayed.
-message ExecuteResponse {
-  uint64 request_id = 1;
-  bytes event_fragment = 2;
-  bool request_complete = 3;
-}
+message ReadBatchRequest { string store_name = 1; repeated ReadRequest requests = 2; }
+message ReadBatchResponse { repeated ReadResult results = 1; }
+message MutateBatchRequest { string store_name = 1; repeated MutateRequest requests = 2; }
+message MutateBatchResponse { repeated MutationResult results = 1; }
+// Resources in public requests are canonical paths relative to store_name.
+message ExecuteRequest { string store_name = 1; Command command = 2; }
+message ExecuteResponse { Event event = 1; }
 message Command {
   uint32 version = 1;
+  reserved 10, 11;
+  reserved "read", "mutate";
   oneof operation {
-    ReadRequest read = 10;
-    MutateRequest mutate = 11;
     ScanRequest scan = 12;
     NativeRequest native = 13;
   }
@@ -46,8 +44,9 @@ message Command {
 message NativeRequest { NativeOpen open = 1; bytes body = 2; }
 message Event {
   uint32 version = 1;
+  reserved 10;
+  reserved "result";
   oneof value {
-    Result result = 10;
     Document document = 11;
     NativeHead head = 12;
     bytes chunk = 13;
@@ -112,7 +111,7 @@ message ScanRequest {
 }
 // Counts document Events in this finite page. A successful page has exactly one
 // of exhausted or next_continuation_token. Commit its checkpoint only after the
-// matching document count, request end frame, and final gRPC OK (EOF).
+// matching document count, terminal ScanEnd and final gRPC OK (EOF).
 message ScanEnd {
   uint64 document_count = 1;
   Failure failure = 2;

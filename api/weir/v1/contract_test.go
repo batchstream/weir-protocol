@@ -49,15 +49,17 @@ func TestPublicStoreContract(t *testing.T) {
 		t.Fatal("public Go package does not belong to protocol module", options.GetGoPackage())
 	}
 	service := file.Services().Get(0)
-	if service.FullName() != "weir.v1.StoreService" || service.Methods().Len() != 2 {
+	if service.FullName() != "weir.v1.StoreService" || service.Methods().Len() != 4 {
 		t.Fatal("unexpected public service", service.FullName(), service.Methods().Len())
 	}
 	resolve := service.Methods().Get(0)
-	execute := service.Methods().Get(1)
+	read := service.Methods().Get(1)
+	mutate := service.Methods().Get(2)
+	execute := service.Methods().Get(3)
 	if resolve.Name() != "ResolveStore" || resolve.Input().FullName() != "weir.v1.ResolveStoreRequest" || resolve.Output().FullName() != "weir.v1.ResolveStoreResponse" || resolve.IsStreamingClient() || resolve.IsStreamingServer() {
 		t.Fatal("ResolveStore RPC contract changed", resolve)
 	}
-	if execute.Name() != "Execute" || execute.Input().FullName() != "weir.v1.ExecuteRequest" || execute.Output().FullName() != "weir.v1.ExecuteResponse" || !execute.IsStreamingClient() || !execute.IsStreamingServer() {
+	if execute.Name() != "Execute" || execute.Input().FullName() != "weir.v1.ExecuteRequest" || execute.Output().FullName() != "weir.v1.ExecuteResponse" || execute.IsStreamingClient() || !execute.IsStreamingServer() {
 		t.Fatal("Execute RPC contract changed", execute)
 	}
 	if StoreService_ResolveStore_FullMethodName != "/weir.v1.StoreService/ResolveStore" || StoreService_Execute_FullMethodName != "/weir.v1.StoreService/Execute" {
@@ -67,10 +69,26 @@ func TestPublicStoreContract(t *testing.T) {
 	assertFields(t, resolve.Input(), request)
 	response := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "endpoints", kind: protoreflect.StringKind, repeated: true}, {name: "cache_ttl_ms", kind: protoreflect.Uint64Kind}}
 	assertFields(t, resolve.Output(), response)
-	executeRequest := []fieldContract{{name: "request_id", kind: protoreflect.Uint64Kind}, {name: "store_name", kind: protoreflect.StringKind}, {name: "command_payload", kind: protoreflect.BytesKind}}
+	executeRequest := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "command", kind: protoreflect.MessageKind, message: "weir.v1.Command"}}
 	assertFields(t, execute.Input(), executeRequest)
-	executeResponse := []fieldContract{{name: "request_id", kind: protoreflect.Uint64Kind}, {name: "event_fragment", kind: protoreflect.BytesKind}, {name: "request_complete", kind: protoreflect.BoolKind}}
+	executeResponse := []fieldContract{{name: "event", kind: protoreflect.MessageKind, message: "weir.v1.Event"}}
 	assertFields(t, execute.Output(), executeResponse)
+	for _, method := range []protoreflect.MethodDescriptor{read, mutate} {
+		if method.IsStreamingClient() || method.IsStreamingServer() {
+			t.Fatal("record RPC must be unary", method)
+		}
+	}
+	if read.Name() != "Read" || read.Input().FullName() != "weir.v1.ReadBatchRequest" || read.Output().FullName() != "weir.v1.ReadBatchResponse" || mutate.Name() != "Mutate" || mutate.Input().FullName() != "weir.v1.MutateBatchRequest" || mutate.Output().FullName() != "weir.v1.MutateBatchResponse" {
+		t.Fatal("record RPC types changed")
+	}
+	readRequest := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "requests", kind: protoreflect.MessageKind, repeated: true, message: "weir.v1.ReadRequest"}}
+	readResponse := []fieldContract{{name: "results", kind: protoreflect.MessageKind, repeated: true, message: "weir.v1.ReadResult"}}
+	mutationRequest := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "requests", kind: protoreflect.MessageKind, repeated: true, message: "weir.v1.MutateRequest"}}
+	mutationResponse := []fieldContract{{name: "results", kind: protoreflect.MessageKind, repeated: true, message: "weir.v1.MutationResult"}}
+	assertFields(t, read.Input(), readRequest)
+	assertFields(t, read.Output(), readResponse)
+	assertFields(t, mutate.Input(), mutationRequest)
+	assertFields(t, mutate.Output(), mutationResponse)
 	if resolve.Output().Fields().ByName("group") != nil || resolve.Output().Fields().ByName("replica_group") != nil {
 		t.Fatal("peer replica group leaked into public response")
 	}
@@ -95,13 +113,11 @@ func TestPublicCommandContract(t *testing.T) {
 	}
 	fields := []fieldContract{
 		{name: "version", kind: protoreflect.Uint32Kind, number: 1},
-		{name: "read", kind: protoreflect.MessageKind, number: 10, message: "weir.v1.ReadRequest"},
-		{name: "mutate", kind: protoreflect.MessageKind, number: 11, message: "weir.v1.MutateRequest"},
 		{name: "scan", kind: protoreflect.MessageKind, number: 12, message: "weir.v1.ScanRequest"},
 		{name: "native", kind: protoreflect.MessageKind, number: 13, message: "weir.v1.NativeRequest"},
 	}
 	assertFields(t, command, fields)
-	if command.Oneofs().Len() != 1 || command.Oneofs().Get(0).Name() != "operation" || command.Oneofs().Get(0).Fields().Len() != 4 {
+	if command.Oneofs().Len() != 1 || command.Oneofs().Get(0).Name() != "operation" || command.Oneofs().Get(0).Fields().Len() != 2 {
 		t.Fatal("command operation union changed")
 	}
 	nativeFields := []fieldContract{{name: "open", kind: protoreflect.MessageKind, message: "weir.v1.NativeOpen"}, {name: "body", kind: protoreflect.BytesKind}}
@@ -109,25 +125,25 @@ func TestPublicCommandContract(t *testing.T) {
 }
 
 func TestPublicCommandWireEncoding(t *testing.T) {
-	read := &ReadRequest{Resource: "x"}
-	readOperation := &Command_Read{Read: read}
-	command := &Command{Version: 1, Operation: readOperation}
+	scan := &ScanRequest{Resource: "x"}
+	scanOperation := &Command_Scan{Scan: scan}
+	command := &Command{Version: 1, Operation: scanOperation}
 	payload, err := proto.Marshal(command)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPayload := []byte{0x08, 0x01, 0x52, 0x03, 0x0a, 0x01, 'x'}
+	wantPayload := []byte{0x08, 0x01, 0x62, 0x03, 0x0a, 0x01, 'x'}
 	if !bytes.Equal(payload, wantPayload) {
-		t.Fatal("command field numbers or encoding changed", payload)
+		t.Fatal("command wire changed", payload)
 	}
-	request := &ExecuteRequest{RequestId: 9, StoreName: "records", CommandPayload: payload}
+	request := &ExecuteRequest{StoreName: "records", Command: command}
 	encoded, err := proto.Marshal(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRequest := []byte{0x08, 0x09, 0x12, 0x07, 'r', 'e', 'c', 'o', 'r', 'd', 's', 0x1a, 0x07, 0x08, 0x01, 0x52, 0x03, 0x0a, 0x01, 'x'}
+	wantRequest := []byte{0x0a, 0x07, 'r', 'e', 'c', 'o', 'r', 'd', 's', 0x12, 0x07, 0x08, 0x01, 0x62, 0x03, 0x0a, 0x01, 'x'}
 	if !bytes.Equal(encoded, wantRequest) {
-		t.Fatal("execution payload field number or encoding changed", encoded)
+		t.Fatal("typed execution wire changed", encoded)
 	}
 	open := &NativeOpen{Resource: "x"}
 	native := &NativeRequest{Open: open, Body: []byte{1}}

@@ -12,24 +12,23 @@ import (
 	"unicode/utf8"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
-	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 const (
-	MaxDocument      = 2 << 20
-	MaxPayload       = 9 << 20
-	MaxFrame         = MaxPayload + 128
-	MaxResponse      = (64 << 10) + 32
-	MaxEvent         = MaxDocument + (8 << 10)
-	RouteOutstanding = 8
-	RouteBytes       = 16 << 20
-	MaxURI           = 4096
-	ResultOverhead   = 512
-	EntryOverhead    = 512
-	MaxExpression    = 16 << 10
-	MaxSelector      = 16 << 10
+	MaxDocument           = 2 << 20
+	MaxPayload            = 9 << 20
+	MaxFrame              = MaxPayload + 128
+	MaxResponse           = MaxEvent + 64
+	MaxEvent              = MaxDocument + (8 << 10)
+	MaxBatchRequestBytes  = 32 << 20
+	MaxBatchResponseBytes = 32 << 20
+	MaxURI                = 4096
+	ResultOverhead        = 512
+	EntryOverhead         = 512
+	MaxExpression         = 16 << 10
+	MaxSelector           = 16 << 10
 )
 
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9]){0,62}$`)
@@ -263,70 +262,58 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 	return end
 }
 
-// ValidateExecuteRequest checks the execution envelope. One RPC stays bound to
-// the Store selected by its first request; Command decoding happens at that Store.
-func ValidateExecuteRequest(req *pb.ExecuteRequest, storeName string, lastID uint64) error {
-	if req == nil || req.RequestId == 0 || req.RequestId <= lastID || proto.Size(req) > MaxFrame || len(req.CommandPayload) == 0 || len(req.CommandPayload) > MaxPayload {
-		return fmt.Errorf("invalid request ID or payload bounds")
+// ValidateExecuteRequest validates one typed Scan or Native request.
+func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
+	if req == nil || !ValidStoreName(req.StoreName) || proto.Size(req) > MaxFrame || hasUnknown(req.ProtoReflect()) {
+		return fmt.Errorf("invalid Execute request envelope")
 	}
-	if !ValidStoreName(req.StoreName) || storeName != "" && req.StoreName != storeName {
-		return fmt.Errorf("invalid or inconsistent Store name")
-	}
-	if len(req.ProtoReflect().GetUnknown()) != 0 {
-		return fmt.Errorf("unknown request fields")
-	}
-	return nil
+	return ValidateCommand(req.Command)
 }
 
 func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
-	if response == nil || response.RequestId == 0 || proto.Size(response) > MaxResponse || len(response.ProtoReflect().GetUnknown()) != 0 {
-		return fmt.Errorf("invalid response envelope")
+	if response == nil || proto.Size(response) > MaxResponse || hasUnknown(response.ProtoReflect()) {
+		return fmt.Errorf("invalid Execute response envelope")
 	}
-	if response.RequestComplete {
-		if len(response.EventFragment) != 0 {
-			return fmt.Errorf("completed request must have empty event fragment")
+	return ValidateEvent(response.Event)
+}
+
+// ValidateCommand requires a versioned Scan or Native with a canonical relative resource.
+func ValidateCommand(command *pb.Command) error {
+	if command == nil || command.Version != 1 || command.Operation == nil || proto.Size(command) > MaxPayload || hasUnknown(command.ProtoReflect()) {
+		return fmt.Errorf("unsupported command version, fields or bounds")
+	}
+	var resource string
+	switch operation := command.Operation.(type) {
+	case *pb.Command_Scan:
+		if operation.Scan != nil {
+			resource = operation.Scan.Resource
 		}
-	} else if len(response.EventFragment) == 0 || len(response.EventFragment) > NativeChunk {
-		return fmt.Errorf("invalid response fragment")
+	case *pb.Command_Native:
+		if operation.Native != nil && operation.Native.Open != nil {
+			resource = operation.Native.Open.Resource
+		}
+	}
+	if !validRelativeResource(resource) {
+		return fmt.Errorf("command requires a canonical relative resource")
+	}
+	if scan := command.GetScan(); scan != nil {
+		normalized := &pb.ScanRequest{Resource: "weir://target/" + scan.Resource, Selector: scan.Selector, ReadMediaType: scan.ReadMediaType, PageSize: scan.PageSize, ContinuationToken: scan.ContinuationToken}
+		if failure := ValidateScan(normalized, "target"); failure != nil {
+			return fmt.Errorf("%s", failure.Message)
+		}
+	} else if native := command.GetNative(); native != nil {
+		open := native.Open
+		normalized := &pb.NativeOpen{Resource: "weir://target/" + open.Resource, Descriptor_: open.Descriptor_, BodyMediaType: open.BodyMediaType}
+		if failure := ValidateNative(normalized, "target"); failure != nil {
+			return fmt.Errorf("%s", failure.Message)
+		}
 	}
 	return nil
 }
 
-func DecodeCommand(payload []byte) (*pb.Command, error) {
-	if len(payload) == 0 || len(payload) > MaxPayload {
-		return nil, fmt.Errorf("invalid command bounds")
-	}
-	command := &pb.Command{}
-	if err := proto.Unmarshal(payload, command); err != nil {
-		return nil, fmt.Errorf("invalid command encoding")
-	}
-	if command.Version != 1 || command.Operation == nil || hasUnknown(command.ProtoReflect()) {
-		return nil, fmt.Errorf("unsupported command version or fields")
-	}
-	var target string
-	switch operation := command.Operation.(type) {
-	case *pb.Command_Read:
-		if operation.Read != nil {
-			target = operation.Read.Resource
-		}
-	case *pb.Command_Mutate:
-		if operation.Mutate != nil {
-			target = operation.Mutate.Resource
-		}
-	case *pb.Command_Scan:
-		if operation.Scan != nil {
-			target = operation.Scan.Resource
-		}
-	case *pb.Command_Native:
-		if operation.Native != nil && operation.Native.Open != nil {
-			target = operation.Native.Open.Resource
-		}
-	}
-	_, segments, err := ParseResource("weir://target/" + target)
-	if err != nil || len(segments) == 0 {
-		return nil, fmt.Errorf("command requires a canonical relative target")
-	}
-	return command, nil
+func validRelativeResource(resource string) bool {
+	_, segments, err := ParseResource("weir://target/" + resource)
+	return err == nil && len(segments) != 0
 }
 
 // Unknown fields are rejected throughout the typed payload. Adding fields to
@@ -358,46 +345,12 @@ func hasUnknown(message protoreflect.Message) bool {
 	return unknown
 }
 
-// MarshalEvent returns one bounded length-delimited event. The caller splits
-// these bytes into response fragments and releases them before the next event.
-func MarshalEvent(event *pb.Event) ([]byte, error) {
-	if err := ValidateEvent(event); err != nil {
-		return nil, err
-	}
-	size := proto.Size(event)
-	encoded := make([]byte, 0, protowire.SizeVarint(uint64(size))+size)
-	encoded = protowire.AppendVarint(encoded, uint64(size))
-	opts := proto.MarshalOptions{}
-	return opts.MarshalAppend(encoded, event)
-}
-
 func ValidateEvent(event *pb.Event) error {
 	if event == nil || event.Version != 1 || event.Value == nil || hasUnknown(event.ProtoReflect()) || proto.Size(event) > MaxEvent {
 		return fmt.Errorf("invalid event version or bounds")
 	}
 	valid := false
 	switch value := event.Value.(type) {
-	case *pb.Event_Result:
-		result := value.Result
-		if result != nil && result.Index != 0 {
-			if read := result.GetRead(); read != nil {
-				switch item := read.Result.(type) {
-				case *pb.ReadResult_Document:
-					valid = validDocument(item.Document, MaxDocument)
-				case *pb.ReadResult_Missing:
-					valid = item.Missing != nil
-				case *pb.ReadResult_Failure:
-					valid = item.Failure != nil && validFailure(item.Failure)
-				}
-			} else if mutation := result.GetMutation(); mutation != nil {
-				valid = mutation.Outcome >= pb.MutationOutcome_NOT_STARTED && mutation.Outcome <= pb.MutationOutcome_UNKNOWN && validFailure(mutation.Failure)
-				// Positive application evidence can coexist with a failure of
-				// subsequent acknowledgement, such as replica confirmation.
-				if mutation.Outcome != pb.MutationOutcome_APPLIED {
-					valid = valid && mutation.Failure != nil
-				}
-			}
-		}
 	case *pb.Event_Document:
 		valid = validDocument(value.Document, MaxDocument)
 	case *pb.Event_Head:
