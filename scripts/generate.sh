@@ -27,9 +27,9 @@ awk '
  $0 == "\treturn &storeServiceClient{cc}" {
   print "\tclient := &storeServiceClient{cc}"; print "\treturn client"; count++; next
  }
- index($0,"\treturn srv.(StoreServiceServer).Execute(&grpc.GenericServerStream") == 1 {
+ index($0,"\treturn srv.(StoreServiceServer).Execute(m, &grpc.GenericServerStream") == 1 {
   print "\tserverStream := &grpc.GenericServerStream[ExecuteRequest, ExecuteResponse]{ServerStream: stream}"
-  print "\treturn srv.(StoreServiceServer).Execute(serverStream)"; count++; next
+  print "\treturn srv.(StoreServiceServer).Execute(m, serverStream)"; count++; next
  }
  { print }
  END { if (count != 2) exit 1 }

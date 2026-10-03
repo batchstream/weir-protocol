@@ -4,25 +4,48 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.1.0
+go get github.com/batchstream/weir-protocol@v0.2.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
 This module depends on neither repository, including through test dependencies.
 It contains no peer discovery protocol, server lifecycle, backend adapter, or SDK.
 
-- `api/weir/v1`: `weir.v1.StoreService.ResolveStore` and finite duplex `Execute`,
-  with the public Command/Event business DTOs.
+- `api/weir/v1`: `weir.v1.StoreService.ResolveStore`, unary `Read`/`Mutate`
+  batches and server-streaming `Execute` for one Scan or Native request.
 - `api/weir/search/v1`: public Search HTTP descriptor DTOs.
 - `api/protocol`: common envelope, endpoint, resource and scan validation.
 - `api/netlimit`: bounded standard Go DNS transport.
 
 Proto source paths remain `api/weir/v1/store.proto` and
-`api/weir/search/v1/http.proto`. Wire packages, field numbers and RPC method paths
-are preserved. Go imports and `go_package` use `github.com/batchstream/weir-protocol`.
+`api/weir/search/v1/http.proto`. Version 0.2.0 replaces record stream commands with
+typed batch RPCs and fragmented Execute frames with typed Events. Go imports and
+`go_package` use `github.com/batchstream/weir-protocol`.
 The independent module owns these schemas; servers and SDKs consume one generated
 set rather than regenerate or copy it. Node-to-node peer schemas remain internal
 to the Weir server repository.
+
+## Batch and streaming semantics
+
+Every Read or Mutate batch selects one Store and uses canonical relative resource
+paths. Requests are validated together before any backend operation starts. Both
+request and response limits are 32 MiB of complete protobuf encoding, including
+envelopes. There is no separate item-count limit. Results match input positions.
+Read results distinguish missing documents and individual backend failures.
+
+A mutation batch is not a transaction. Mutations to the same resource execute in
+input order, including after a failed item; different resources may run in parallel.
+Ordering across RPCs follows the database semantics. An APPLIED result may also
+carry a subsequent acknowledgement failure; other outcomes require a Failure.
+A failed unary RPC provides no individual acknowledgements, so every submitted
+mutation may have applied. Clients must never automatically replay that batch.
+
+Execute accepts one typed versioned Command containing Scan or Native and streams
+one typed Event per response. There are no request IDs, byte fragments or separate
+completion frames. Scan checkpoints require a matching document count, a terminal
+ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained when
+a later RPC error occurs. Documents remain bounded at 2 MiB; streams preserve
+incremental consumption for Scan and Native responses.
 
 ## Validate
 
@@ -75,7 +98,7 @@ project's named struct style in generated code. Regeneration is byte reproducibl
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.1.0
+gh workflow run release.yml --ref main -f version=v0.2.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete

@@ -20,6 +20,8 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	StoreService_ResolveStore_FullMethodName = "/weir.v1.StoreService/ResolveStore"
+	StoreService_Read_FullMethodName         = "/weir.v1.StoreService/Read"
+	StoreService_Mutate_FullMethodName       = "/weir.v1.StoreService/Mutate"
 	StoreService_Execute_FullMethodName      = "/weir.v1.StoreService/Execute"
 )
 
@@ -31,10 +33,17 @@ const (
 // ResolveStore, then connect directly to a returned Store endpoint for execution.
 type StoreServiceClient interface {
 	ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error)
-	// One finite stream selects a Store on its first valid request. The Store is
-	// fixed for that stream; closing input and receiving final gRPC OK is required
-	// for whole-stream success. The service never forwards business requests.
-	Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
+	// Every batch is bound to one Store and results preserve request order.
+	// Requests are validated together before any operation starts. Mutations are
+	// independent, not transactional, and must never be automatically replayed.
+	// Mutations to the same resource execute in input order, including after
+	// item failures. Different resources may execute concurrently. Across RPCs,
+	// ordering follows the database semantics.
+	Read(ctx context.Context, in *ReadBatchRequest, opts ...grpc.CallOption) (*ReadBatchResponse, error)
+	Mutate(ctx context.Context, in *MutateBatchRequest, opts ...grpc.CallOption) (*MutateBatchResponse, error)
+	// Execute is one finite Scan or Native request with incrementally delivered
+	// typed events. Final gRPC OK is required to commit a Scan checkpoint.
+	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecuteResponse], error)
 }
 
 type storeServiceClient struct {
@@ -56,18 +65,44 @@ func (c *storeServiceClient) ResolveStore(ctx context.Context, in *ResolveStoreR
 	return out, nil
 }
 
-func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error) {
+func (c *storeServiceClient) Read(ctx context.Context, in *ReadBatchRequest, opts ...grpc.CallOption) (*ReadBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReadBatchResponse)
+	err := c.cc.Invoke(ctx, StoreService_Read_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storeServiceClient) Mutate(ctx context.Context, in *MutateBatchRequest, opts ...grpc.CallOption) (*MutateBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MutateBatchResponse)
+	err := c.cc.Invoke(ctx, StoreService_Mutate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storeServiceClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecuteResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &StoreService_ServiceDesc.Streams[0], StoreService_Execute_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &grpc.GenericClientStream[ExecuteRequest, ExecuteResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StoreService_ExecuteClient = grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse]
+type StoreService_ExecuteClient = grpc.ServerStreamingClient[ExecuteResponse]
 
 // StoreServiceServer is the server API for StoreService service.
 // All implementations must embed UnimplementedStoreServiceServer
@@ -77,10 +112,17 @@ type StoreService_ExecuteClient = grpc.BidiStreamingClient[ExecuteRequest, Execu
 // ResolveStore, then connect directly to a returned Store endpoint for execution.
 type StoreServiceServer interface {
 	ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error)
-	// One finite stream selects a Store on its first valid request. The Store is
-	// fixed for that stream; closing input and receiving final gRPC OK is required
-	// for whole-stream success. The service never forwards business requests.
-	Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
+	// Every batch is bound to one Store and results preserve request order.
+	// Requests are validated together before any operation starts. Mutations are
+	// independent, not transactional, and must never be automatically replayed.
+	// Mutations to the same resource execute in input order, including after
+	// item failures. Different resources may execute concurrently. Across RPCs,
+	// ordering follows the database semantics.
+	Read(context.Context, *ReadBatchRequest) (*ReadBatchResponse, error)
+	Mutate(context.Context, *MutateBatchRequest) (*MutateBatchResponse, error)
+	// Execute is one finite Scan or Native request with incrementally delivered
+	// typed events. Final gRPC OK is required to commit a Scan checkpoint.
+	Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecuteResponse]) error
 	mustEmbedUnimplementedStoreServiceServer()
 }
 
@@ -94,7 +136,13 @@ type UnimplementedStoreServiceServer struct{}
 func (UnimplementedStoreServiceServer) ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResolveStore not implemented")
 }
-func (UnimplementedStoreServiceServer) Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error {
+func (UnimplementedStoreServiceServer) Read(context.Context, *ReadBatchRequest) (*ReadBatchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
+}
+func (UnimplementedStoreServiceServer) Mutate(context.Context, *MutateBatchRequest) (*MutateBatchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Mutate not implemented")
+}
+func (UnimplementedStoreServiceServer) Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecuteResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Execute not implemented")
 }
 func (UnimplementedStoreServiceServer) mustEmbedUnimplementedStoreServiceServer() {}
@@ -136,13 +184,53 @@ func _StoreService_ResolveStore_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StoreService_Read_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StoreServiceServer).Read(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StoreService_Read_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StoreServiceServer).Read(ctx, req.(*ReadBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StoreService_Mutate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MutateBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StoreServiceServer).Mutate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StoreService_Mutate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StoreServiceServer).Mutate(ctx, req.(*MutateBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StoreService_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExecuteRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
 	serverStream := &grpc.GenericServerStream[ExecuteRequest, ExecuteResponse]{ServerStream: stream}
-	return srv.(StoreServiceServer).Execute(serverStream)
+	return srv.(StoreServiceServer).Execute(m, serverStream)
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StoreService_ExecuteServer = grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]
+type StoreService_ExecuteServer = grpc.ServerStreamingServer[ExecuteResponse]
 
 // StoreService_ServiceDesc is the grpc.ServiceDesc for StoreService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -155,13 +243,20 @@ var StoreService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "ResolveStore",
 			Handler:    _StoreService_ResolveStore_Handler,
 		},
+		{
+			MethodName: "Read",
+			Handler:    _StoreService_Read_Handler,
+		},
+		{
+			MethodName: "Mutate",
+			Handler:    _StoreService_Mutate_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Execute",
 			Handler:       _StoreService_Execute_Handler,
 			ServerStreams: true,
-			ClientStreams: true,
 		},
 	},
 	Metadata: "api/weir/v1/store.proto",

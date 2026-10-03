@@ -1,13 +1,11 @@
 package protocol
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
-	"google.golang.org/protobuf/encoding/protodelim"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -71,74 +69,54 @@ func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
 	}
 }
 
-func TestExecuteEnvelopeIDsStoreNamesAndFragments(t *testing.T) {
-	request := &pb.ExecuteRequest{RequestId: 9, StoreName: "records", CommandPayload: []byte{1}}
-	if err := ValidateExecuteRequest(request, "records", 2); err != nil {
+func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
+	scan := &pb.ScanRequest{Resource: "records", PageSize: 1}
+	variant := &pb.Command_Scan{Scan: scan}
+	command := &pb.Command{Version: 1, Operation: variant}
+	request := &pb.ExecuteRequest{StoreName: "records", Command: command}
+	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*pb.ExecuteRequest){
-		func(r *pb.ExecuteRequest) { r.RequestId = 0 }, func(r *pb.ExecuteRequest) { r.RequestId = 2 }, func(r *pb.ExecuteRequest) { r.StoreName = "other" }, func(r *pb.ExecuteRequest) { r.CommandPayload = nil }, func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0x20, 1}) },
+		func(r *pb.ExecuteRequest) { r.StoreName = "bad/store" },
+		func(r *pb.ExecuteRequest) { r.Command = nil },
+		func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0x18, 1}) },
+		func(r *pb.ExecuteRequest) { r.Command.Version = 2 },
+		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "weir://records/data" },
+		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "/data" },
+		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "data/%6B" },
+		func(r *pb.ExecuteRequest) { r.Command.GetScan().ProtoReflect().SetUnknown([]byte{0x38, 1}) },
 	} {
 		copied := proto.Clone(request).(*pb.ExecuteRequest)
 		mutate(copied)
-		if err := ValidateExecuteRequest(copied, "records", 2); err == nil {
-			t.Fatal("accepted invalid execution envelope", copied)
+		if err := ValidateExecuteRequest(copied); err == nil {
+			t.Fatal("accepted invalid request", copied)
 		}
 	}
-	chunk := &pb.ExecuteResponse{RequestId: 9, EventFragment: []byte{1}}
-	end := &pb.ExecuteResponse{RequestId: 9, RequestComplete: true}
-	for _, response := range []*pb.ExecuteResponse{chunk, end} {
-		if err := ValidateExecuteResponse(response); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, response := range []*pb.ExecuteResponse{{RequestId: 9}, {RequestId: 9, RequestComplete: true, EventFragment: []byte{1}}, {RequestId: 0, RequestComplete: true}, {RequestId: 9, EventFragment: make([]byte, NativeChunk+1)}} {
-		if err := ValidateExecuteResponse(response); err == nil {
-			t.Fatal("accepted invalid response")
-		}
-	}
-}
-
-func TestCommandVersionUnknownFieldsAndRelativeTarget(t *testing.T) {
-	request := &pb.ReadRequest{Resource: "data/s:key"}
-	value := &pb.Command_Read{Read: request}
-	command := &pb.Command{Version: 1, Operation: value}
-	encode := func(c *pb.Command) []byte {
-		data, err := proto.Marshal(c)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return data
-	}
-	if _, err := DecodeCommand(encode(command)); err != nil {
+	document := &pb.Document{MediaType: "application/octet-stream", Data: make([]byte, MaxDocument)}
+	value := &pb.Event_Document{Document: document}
+	event := &pb.Event{Version: 1, Value: value}
+	response := &pb.ExecuteResponse{Event: event}
+	if err := ValidateExecuteResponse(response); err != nil {
 		t.Fatal(err)
 	}
-	for _, mutate := range []func(*pb.Command){func(c *pb.Command) { c.Version = 2 }, func(c *pb.Command) { c.Operation = nil }, func(c *pb.Command) { c.GetRead().Resource = "weir://records/data/s:key" }, func(c *pb.Command) { c.GetRead().Resource = "/data/s:key" }, func(c *pb.Command) { c.GetRead().Resource = "data/%6B" }, func(c *pb.Command) { c.GetRead().ProtoReflect().SetUnknown([]byte{0x20, 1}) }} {
-		copied := proto.Clone(command).(*pb.Command)
-		mutate(copied)
-		if _, err := DecodeCommand(encode(copied)); err == nil {
-			t.Fatal("accepted invalid command", copied)
-		}
-	}
-	if _, err := DecodeCommand([]byte{0xff}); err == nil {
-		t.Fatal("malformed encoding accepted")
+	response.ProtoReflect().SetUnknown([]byte{0x10, 1})
+	if err := ValidateExecuteResponse(response); err == nil {
+		t.Fatal("unknown response accepted")
 	}
 }
 
-func TestEventValidationAndBoundedEncoding(t *testing.T) {
+func TestEventValidationAndTypedEncoding(t *testing.T) {
 	document := &pb.Document{MediaType: "application/octet-stream", Data: make([]byte, MaxDocument)}
-	read := ReadDocument(document)
-	value := &pb.Result_Read{Read: read}
-	result := &pb.Result{Index: 4, Result: value}
-	event := &pb.Event{Version: 1, Value: &pb.Event_Result{Result: result}}
-	encoded, err := MarshalEvent(event)
+	value := &pb.Event_Document{Document: document}
+	event := &pb.Event{Version: 1, Value: value}
+	encoded, err := proto.Marshal(event)
 	if err != nil {
 		t.Fatal(err)
 	}
 	decoded := &pb.Event{}
-	reader := bytes.NewBuffer(encoded)
-	if err := protodelim.UnmarshalFrom(reader, decoded); err != nil || reader.Len() != 0 || !proto.Equal(event, decoded) {
-		t.Fatal("not one exact delimited event", err, reader.Len())
+	if err := proto.Unmarshal(encoded, decoded); err != nil || !proto.Equal(event, decoded) {
+		t.Fatal("typed event changed", err)
 	}
 	if err := ValidateEvent(decoded); err != nil {
 		t.Fatal(err)
@@ -147,42 +125,36 @@ func TestEventValidationAndBoundedEncoding(t *testing.T) {
 	if len(failure.Message) > 1024 || !utf8.ValidString(failure.Message) {
 		t.Fatal("failure envelope not bounded UTF8")
 	}
+	badDocument := &pb.Document{MediaType: "invalid"}
+	badDocumentValue := &pb.Event_Document{Document: badDocument}
+	badChunkValue := &pb.Event_Chunk{Chunk: make([]byte, NativeChunk+1)}
+	badEnd := &pb.NativeEnd{Completion: pb.NativeCompletion(99)}
+	badEndValue := &pb.Event_NativeEnd{NativeEnd: badEnd}
+	incomplete := &pb.NativeEnd{Completion: pb.NativeCompletion_RESPONSE_INCOMPLETE}
+	incompleteValue := &pb.Event_NativeEnd{NativeEnd: incomplete}
 	invalid := []*pb.Event{
-		{Version: 1, Value: &pb.Event_Result{Result: &pb.Result{Index: 4}}},
-		{Version: 1, Value: &pb.Event_Document{Document: &pb.Document{MediaType: "invalid"}}},
-		{Version: 1, Value: &pb.Event_Chunk{Chunk: make([]byte, NativeChunk+1)}},
-		{Version: 1, Value: &pb.Event_NativeEnd{NativeEnd: &pb.NativeEnd{Completion: pb.NativeCompletion(99)}}},
-		{Version: 1, Value: &pb.Event_NativeEnd{NativeEnd: &pb.NativeEnd{Completion: pb.NativeCompletion_RESPONSE_INCOMPLETE}}},
+		{Version: 1}, {Version: 1, Value: badDocumentValue}, {Version: 1, Value: badChunkValue},
+		{Version: 1, Value: badEndValue}, {Version: 1, Value: incompleteValue},
 	}
-	for _, event := range invalid {
-		if err := ValidateEvent(event); err == nil {
+	for _, item := range invalid {
+		if err := ValidateEvent(item); err == nil {
 			t.Fatal("accepted invalid event")
 		}
 	}
 }
 
 func TestAppliedMutationMayReportPostWriteFailure(t *testing.T) {
-	failure := Fail(pb.FailureCode_UNAVAILABLE, "write acknowledged but replica acknowledgement failed")
+	failure := Fail(pb.FailureCode_UNAVAILABLE, "write applied but replica acknowledgement failed")
 	mutation := Mutation(pb.MutationOutcome_APPLIED, failure)
-	value := &pb.Result_Mutation{Mutation: mutation}
-	result := &pb.Result{Index: 1, Result: value}
-	event := &pb.Event{Version: 1, Value: &pb.Event_Result{Result: result}}
-	encoded, err := MarshalEvent(event)
-	if err != nil {
-		t.Fatal("valid APPLIED evidence rejected", err)
-	}
-	decoded := &pb.Event{}
-	reader := bytes.NewBuffer(encoded)
-	if err := protodelim.UnmarshalFrom(reader, decoded); err != nil || !proto.Equal(event, decoded) || reader.Len() != 0 {
-		t.Fatal("mutation evidence changed", decoded, err)
+	if err := ValidateMutationResult(mutation); err != nil {
+		t.Fatal(err)
 	}
 	failure.Code = pb.FailureCode_FAILURE_CODE_UNSPECIFIED
-	if err := ValidateEvent(event); err == nil {
-		t.Fatal("invalid failure accepted for APPLIED")
+	if err := ValidateMutationResult(mutation); err == nil {
+		t.Fatal("invalid failure accepted")
 	}
-	mutation.Outcome = pb.MutationOutcome_NOT_STARTED
-	mutation.Failure = nil
-	if err := ValidateEvent(event); err == nil {
+	mutation.Outcome, mutation.Failure = pb.MutationOutcome_NOT_STARTED, nil
+	if err := ValidateMutationResult(mutation); err == nil {
 		t.Fatal("unfinished result without failure accepted")
 	}
 }
