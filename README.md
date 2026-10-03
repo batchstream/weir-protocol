@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@main
+go get github.com/batchstream/weir-protocol@v0.1.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -12,7 +12,7 @@ This module depends on neither repository, including through test dependencies.
 It contains no peer discovery protocol, server lifecycle, backend adapter, or SDK.
 
 - `api/weir/v1`: `weir.v1.StoreService.ResolveStore` and finite duplex `Execute`,
-  with the public Call/Event business DTOs.
+  with the public Command/Event business DTOs.
 - `api/weir/search/v1`: public Search HTTP descriptor DTOs.
 - `api/protocol`: common envelope, endpoint, resource and scan validation.
 - `api/netlimit`: bounded standard Go DNS transport.
@@ -69,4 +69,18 @@ git diff --exit-code
 Use `PROTOC`, `PROTOC_GEN_GO`, `PROTOC_GEN_GO_GRPC`, and `GOFMT` to select explicit
 external tool paths. The script checks compiler/plugin versions and preserves the
 project's named struct style in generated code. Regeneration is byte reproducible.
-No release tag workflow is included; version publication is a separate task.
+
+## Publish a stable version
+
+After the reviewed change is merged, an authorized maintainer can publish:
+
+```sh
+gh workflow run release.yml --ref main -f version=v0.1.0
+```
+
+The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete
+offline CI before publication. Its read-only preflight requires a clean checkout,
+the validated commit to still be the current remote `main`, and no existing tag
+for that version. It then creates the GitHub release and tag at that exact commit.
+The preflight script itself never publishes, tags, or pushes. Protocol consumers
+should pin the published version rather than a branch name.
