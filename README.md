@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.6.0
+go get github.com/batchstream/weir-protocol@v0.7.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -13,12 +13,10 @@ It contains no peer discovery protocol, server lifecycle, backend adapter, or SD
 
 - `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
   `Execute` for Read, Mutate, Scan, and Native.
-- `api/weir/search/v1`: typed public Search HTTP request/response DTOs.
 - `api/protocol`: common envelope, endpoint, resource and scan validation.
 - `api/netlimit`: bounded standard Go DNS transport.
 
-The public schemas live in `api/weir/v1/store.proto` and
-`api/weir/search/v1/http.proto`. Go imports and `go_package` use
+The public schema lives in `api/weir/v1/store.proto`. Go imports and `go_package` use
 `github.com/batchstream/weir-protocol`. Servers and SDKs consume the module's
 generated types. Node-to-node peer schemas and execution DTOs belong to the
 Weir server repository.
@@ -29,10 +27,12 @@ Execute selects one Store and operation kind for its lifetime. Each Read or Muta
 request carries one record. Servers aggregate admitted records into database
 batches; clients send and consume incrementally without collecting a wire batch.
 There is no item or byte bound on the total call. Documents are bounded at 2 MiB;
-Native selects a BSON mongodb_command or typed search_http request with a body
-bounded at 8 MiB, within the 9 MiB Command limit. Search HTTP metadata is bounded
-separately at 64 KiB. NativeHead carries a typed HttpResponse for Search, with no
-HTTP field for MongoDB replies.
+Native carries a required Document request bounded at 8 MiB of data, within the
+9 MiB Command limit. NativeHead carries optional Document metadata bounded at
+64 KiB of data and a content type for subsequent chunks. Request and metadata
+bytes are opaque to the public protocol. Their content types select adapter-owned
+formats; new adapters need no protobuf fields or schema changes. Empty request
+data is permitted. Unknown valid content types are left to the selected adapter.
 
 Each request is validated before execution. Earlier requests may have effects
 when a later request fails validation. The first record index is 1; every later
@@ -43,7 +43,7 @@ validators check each envelope, nested fields, and bounds; unknown fields are
 rejected throughout the message tree.
 
 ReadResult.missing confirms document absence after a successful read.
-TARGET_NOT_FOUND reports a required collection/index that does not exist; it is
+TARGET_NOT_FOUND reports a required adapter-owned target that does not exist; it is
 an individual Failure, not a missing document result.
 Clients can consume results incrementally; SDK convenience collectors may retain
 results at the caller's request. Each response confirms one record.
@@ -62,10 +62,11 @@ An individually received MutationResult retains its application evidence if the
 stream later fails. A submitted mutation without a result may have applied.
 Clients must never automatically replay unacknowledged mutations.
 
-Scan uses a native BSON filter object or JSON Search query object directly, with
-an optional typed Projection. Projection requires a uniform include/exclude mode
+Scan uses an opaque adapter-owned filter expression and an optional typed
+Projection. Projection requires a uniform include/exclude mode
 and nonempty bounded dot-separated field paths; duplicate, ancestor-overlapping,
-operator and wildcard paths are invalid. An absent Projection returns full
+control characters and wildcard paths are invalid. Literal field names such as
+`$field` are allowed by the protocol; adapters enforce their own field rules. An absent Projection returns full
 documents. The projection participates in traversal identity.
 
 LuaTransform supplies Source and optional Input without a runtime selector. Its
@@ -77,7 +78,7 @@ typed object means replace.
 Scan and Native accept one Command at index 1, followed by client half-close, and
 emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
 ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained when
-a later RPC error occurs. Document.content_type identifies the adapter-owned BSON, JSON, or profile format;
+a later RPC error occurs. Document.content_type identifies the adapter-owned payload format;
 read requests do not negotiate a different representation. Documents remain bounded at 2 MiB; streams preserve
 incremental consumption for Scan and Native responses. A Scan continuation is
 bound to its Store, backend profile, and traversal settings. Its checksum detects
@@ -135,7 +136,7 @@ project's named struct style in generated code. Regeneration is byte reproducibl
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.6.0
+gh workflow run release.yml --ref main -f version=v0.7.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete

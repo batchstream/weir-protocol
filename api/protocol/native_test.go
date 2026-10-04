@@ -4,93 +4,98 @@ import (
 	"strings"
 	"testing"
 
-	searchpb "github.com/batchstream/weir-protocol/api/weir/search/v1"
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
 	"google.golang.org/protobuf/proto"
 )
 
-func nativeHTTPExecution(http *searchpb.HttpRequest) *pb.ExecuteRequest {
-	value := &pb.NativeRequest_SearchHttp{SearchHttp: http}
-	native := &pb.NativeRequest{Resource: "records", Request: value}
+func nativeExecution(document *pb.Document) *pb.ExecuteRequest {
+	native := &pb.NativeRequest{Resource: "records", Request: document}
 	operation := &pb.Command_Native{Native: native}
 	command := &pb.Command{Operation: operation}
-	request := &pb.ExecuteRequest{StoreName: "search", Index: 1, Command: command}
+	request := &pb.ExecuteRequest{StoreName: "example", Index: 1, Command: command}
 	return request
 }
 
-func TestNativeTypedHTTPBoundsAndFields(t *testing.T) {
-	header := &searchpb.Header{Name: "x-example", Values: []string{"value"}}
-	http := &searchpb.HttpRequest{Method: "POST", Path: "/_search", BodyContentType: "application/json", Body: []byte(`{}`), Headers: []*searchpb.Header{header}}
-	request := nativeHTTPExecution(http)
-	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("typed HTTP request rejected", err)
-	}
-	for _, mutate := range []func(*searchpb.HttpRequest){
-		func(r *searchpb.HttpRequest) { r.Method = "" },
-		func(r *searchpb.HttpRequest) { r.Method = "GET\r\nInjected:" },
-		func(r *searchpb.HttpRequest) { r.Path = "_search" },
-		func(r *searchpb.HttpRequest) { r.Path = "/\n" },
-		func(r *searchpb.HttpRequest) { r.Query = string([]byte{0xff}) },
-		func(r *searchpb.HttpRequest) { r.BodyContentType = "" },
-		func(r *searchpb.HttpRequest) { r.BodyContentType = "application/json; charset=utf-8" },
-		func(r *searchpb.HttpRequest) { r.Body = make([]byte, MaxNativeBodyBytes+1) },
-		func(r *searchpb.HttpRequest) { r.Headers[0].Name = "X-Example" },
-		func(r *searchpb.HttpRequest) { r.Headers[0].Values = []string{"injected\r\nvalue"} },
-		func(r *searchpb.HttpRequest) {
-			r.Headers[0].Values = []string{strings.Repeat("x", MaxNativeHTTPMetadataBytes)}
-		},
-		func(r *searchpb.HttpRequest) { r.Headers[0] = nil },
-		func(r *searchpb.HttpRequest) { r.Headers[0].ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
+func TestNativeAcceptsOpaqueStoreOwnedRequests(t *testing.T) {
+	for _, document := range []*pb.Document{
+		{ContentType: "application/vnd.example.command", Data: []byte{0xff, 0, 1}},
+		{ContentType: "application/vnd.another.command"},
+		{ContentType: "application/http", Data: []byte("adapter validates these bytes")},
 	} {
-		copied := proto.Clone(http).(*searchpb.HttpRequest)
-		mutate(copied)
-		invalid := nativeHTTPExecution(copied)
-		if err := ValidateExecuteRequest(invalid); err == nil {
-			t.Fatal("invalid typed HTTP request accepted", copied)
+		request := nativeExecution(document)
+		if err := ValidateExecuteRequest(request); err != nil {
+			t.Fatal("opaque request rejected by public envelope", document, err)
 		}
-		if failure := ValidateNative(invalid.Command.GetNative()); failure == nil {
+		if failure := ValidateNative(request.Command.GetNative()); failure != nil {
+			t.Fatal("opaque request rejected directly", document, failure)
+		}
+	}
+}
+
+func TestNativeRequestBoundsAndUnknownFields(t *testing.T) {
+	document := &pb.Document{ContentType: "application/vnd.example.command", Data: []byte{1}}
+	for _, mutate := range []func(*pb.NativeRequest){
+		func(r *pb.NativeRequest) { r.Request = nil },
+		func(r *pb.NativeRequest) { r.Request.ContentType = "" },
+		func(r *pb.NativeRequest) { r.Request.ContentType = "application/json; charset=utf-8" },
+		func(r *pb.NativeRequest) { r.Request.Data = make([]byte, MaxNativeRequestBytes+1) },
+		func(r *pb.NativeRequest) { r.Request.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
+		func(r *pb.NativeRequest) { r.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
+	} {
+		request := nativeExecution(document)
+		copied := proto.Clone(request).(*pb.ExecuteRequest)
+		mutate(copied.Command.GetNative())
+		if err := ValidateExecuteRequest(copied); err == nil {
+			t.Fatal("invalid Native envelope accepted", copied)
+		}
+		if failure := ValidateNative(copied.Command.GetNative()); failure == nil {
 			t.Fatal("invalid Native request accepted directly", copied)
 		}
 	}
 }
 
-func TestNativeMaximumBodyAndMetadataFitEnvelope(t *testing.T) {
-	contentType := strings.Repeat("a", 63) + "/" + strings.Repeat("b", 63)
-	header := &searchpb.Header{Name: "x-example", Values: []string{strings.Repeat("x", 60<<10)}}
-	http := &searchpb.HttpRequest{Method: "POST", Path: "/_search", Headers: []*searchpb.Header{header}, BodyContentType: contentType, Body: make([]byte, MaxNativeBodyBytes)}
-	request := nativeHTTPExecution(http)
+func TestNativeMaximumPayloadFitsEnvelope(t *testing.T) {
+	contentType := "application/" + strings.Repeat("x", 115)
+	document := &pb.Document{ContentType: contentType, Data: make([]byte, MaxNativeRequestBytes)}
+	request := nativeExecution(document)
 	request.Command.GetNative().Resource = strings.Repeat("x", MaxResourceBytes)
 	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("legal body and metadata rejected together", err)
-	}
-	body := &pb.NativeRequest_MongodbCommand{MongodbCommand: make([]byte, MaxNativeBodyBytes)}
-	request.Command.GetNative().Request = body
-	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("maximum MongoDB command rejected", err)
-	}
-	body.MongodbCommand = nil
-	if err := ValidateExecuteRequest(request); err == nil {
-		t.Fatal("empty MongoDB command accepted")
+		t.Fatal("maximal Native request rejected", err)
 	}
 }
 
-func TestNativeHTTPResponseRequiresValidStatusAndHeaders(t *testing.T) {
-	for _, code := range []uint32{200, 404, 500} {
-		http := &searchpb.HttpResponse{StatusCode: code}
-		head := &pb.NativeHead{Http: http}
+func TestNativeResponseMetadataIsOpaqueAndBounded(t *testing.T) {
+	for _, metadata := range []*pb.Document{
+		nil,
+		{ContentType: "application/vnd.example.response"},
+		{ContentType: "application/vnd.another.response", Data: []byte{0xff, 0}},
+		{ContentType: "application/http", Data: make([]byte, MaxNativeMetadataBytes)},
+	} {
+		head := &pb.NativeHead{Metadata: metadata, BodyContentType: "application/octet-stream"}
 		value := &pb.Event_Head{Head: head}
 		event := &pb.Event{Value: value}
 		if err := ValidateEvent(event); err != nil {
-			t.Fatal("normal or backend-error HTTP response rejected", err)
+			t.Fatal("opaque response metadata rejected", metadata, err)
 		}
 	}
-	for _, code := range []uint32{0, 99, 600} {
-		http := &searchpb.HttpResponse{StatusCode: code}
-		head := &pb.NativeHead{Http: http}
+	for _, metadata := range []*pb.Document{
+		{},
+		{ContentType: "invalid"},
+		{ContentType: "application/vnd.example.response", Data: make([]byte, MaxNativeMetadataBytes+1)},
+	} {
+		head := &pb.NativeHead{Metadata: metadata}
 		value := &pb.Event_Head{Head: head}
 		event := &pb.Event{Value: value}
 		if err := ValidateEvent(event); err == nil {
-			t.Fatal("invalid HTTP status accepted", code)
+			t.Fatal("invalid Native metadata accepted", metadata)
 		}
+	}
+	metadata := &pb.Document{ContentType: "application/vnd.example.response"}
+	metadata.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
+	head := &pb.NativeHead{Metadata: metadata}
+	value := &pb.Event_Head{Head: head}
+	event := &pb.Event{Value: value}
+	if err := ValidateEvent(event); err == nil {
+		t.Fatal("unknown Native metadata fields accepted")
 	}
 }

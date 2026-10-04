@@ -47,7 +47,7 @@ func validProjectionField(field string) bool {
 		return false
 	}
 	for _, segment := range strings.Split(field, ".") {
-		if segment == "" || strings.HasPrefix(segment, "$") {
+		if segment == "" {
 			return false
 		}
 		for _, value := range segment {

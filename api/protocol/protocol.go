@@ -414,7 +414,7 @@ func validateEvent(event *pb.Event) error {
 			break
 		}
 		head := value.Head
-		valid = head != nil && (head.BodyContentType == "" || validMedia(head.BodyContentType)) && validHTTPResponse(head.Http)
+		valid = head != nil && (head.BodyContentType == "" || validMedia(head.BodyContentType)) && (head.Metadata == nil || validDocument(head.Metadata, MaxNativeMetadataBytes))
 	case *pb.Event_Chunk:
 		if value == nil {
 			break

@@ -76,19 +76,14 @@ func TestTypedNilOneofsRejectWithoutPanicking(t *testing.T) {
 	}
 }
 
-func TestTypedNilNativeRequestsRejectWithoutPanicking(t *testing.T) {
-	for _, request := range []*pb.NativeRequest{
-		{Resource: "records", Request: (*pb.NativeRequest_MongodbCommand)(nil)},
-		{Resource: "records", Request: (*pb.NativeRequest_SearchHttp)(nil)},
-		{Resource: "records", Request: &pb.NativeRequest_SearchHttp{}},
-	} {
-		if failure := ValidateNative(request); failure == nil {
-			t.Fatal("typed nil Native request accepted")
-		}
-		operation := &pb.Command_Native{Native: request}
-		command := &pb.Command{Operation: operation}
-		if err := ValidateCommand(command); err == nil {
-			t.Fatal("typed nil Native command accepted")
-		}
+func TestNativeRequiresRequestDocument(t *testing.T) {
+	request := &pb.NativeRequest{Resource: "records"}
+	if failure := ValidateNative(request); failure == nil {
+		t.Fatal("missing Native request document accepted")
+	}
+	operation := &pb.Command_Native{Native: request}
+	command := &pb.Command{Operation: operation}
+	if err := ValidateCommand(command); err == nil {
+		t.Fatal("missing Native command document accepted")
 	}
 }
