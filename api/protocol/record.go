@@ -6,7 +6,7 @@ import (
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
 )
 
-// ValidateReadRequest validates one record before it is placed in a frame.
+// ValidateReadRequest validates one record before it is sent.
 func ValidateReadRequest(request *pb.ReadRequest) error {
 	if request == nil || hasUnknown(request.ProtoReflect()) {
 		return fmt.Errorf("missing Read request or unknown fields")
@@ -18,13 +18,10 @@ func validateReadRequest(request *pb.ReadRequest) error {
 	if request == nil || !validRelativeResource(request.Resource) {
 		return fmt.Errorf("Read requires a canonical relative resource")
 	}
-	if failure := validateReadFields(request); failure != nil {
-		return fmt.Errorf("Read: %s", failure.Message)
-	}
 	return nil
 }
 
-// ValidateMutationRequest validates one record before it is placed in a frame.
+// ValidateMutationRequest validates one record before it is sent.
 func ValidateMutationRequest(request *pb.MutateRequest) error {
 	if request == nil || hasUnknown(request.ProtoReflect()) {
 		return fmt.Errorf("missing mutation request or unknown fields")
@@ -56,10 +53,19 @@ func validateReadResult(result *pb.ReadResult) error {
 	valid := false
 	switch value := result.Result.(type) {
 	case *pb.ReadResult_Document:
+		if value == nil {
+			break
+		}
 		valid = validDocument(value.Document, MaxDocument)
 	case *pb.ReadResult_Missing:
+		if value == nil {
+			break
+		}
 		valid = value.Missing != nil
 	case *pb.ReadResult_Failure:
+		if value == nil {
+			break
+		}
 		valid = value.Failure != nil && validFailure(value.Failure)
 	}
 	if !valid {

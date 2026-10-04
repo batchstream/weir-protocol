@@ -7,21 +7,23 @@ import (
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
 )
 
-// Measure frame validation and per-record response validation without I/O.
-func BenchmarkReadFrameProtocolPath(b *testing.B) {
-	requests := make([]*pb.ReadRequest, 32)
+// Measure per-record request and response validation without I/O.
+func BenchmarkReadProtocolPath(b *testing.B) {
+	requests := make([]*pb.ExecuteRequest, 32)
 	responses := make([]*pb.ExecuteResponse, len(requests))
 	for index := range requests {
 		resource := fmt.Sprintf("weirtest_012345678901234567890123/records/s:record-%08d", index)
-		requests[index] = &pb.ReadRequest{Resource: resource}
-		document := &pb.Document{MediaType: "application/bson", Data: make([]byte, 1114)}
+		read := &pb.ReadRequest{Resource: resource}
+		requests[index] = readExecution("mongo", uint64(index+1), read)
+		document := &pb.Document{ContentType: "application/bson", Data: make([]byte, 1114)}
 		responses[index] = readResponse(uint64(index+1), ReadDocument(document))
 	}
-	request := readFrame("mongo", 1, requests)
 	b.ReportAllocs()
 	for b.Loop() {
-		if err := ValidateExecuteRequest(request); err != nil {
-			b.Fatal(err)
+		for _, request := range requests {
+			if err := ValidateExecuteRequest(request); err != nil {
+				b.Fatal(err)
+			}
 		}
 		for _, response := range responses {
 			if err := ValidateExecuteResponse(response); err != nil {

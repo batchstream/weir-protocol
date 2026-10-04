@@ -32,15 +32,15 @@ const (
 type StoreServiceClient interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error)
-	// Execute accepts bounded frames and emits indexed results incrementally.
-	// A stream selects one Store and operation kind. Read and Mutate frames use
-	// consecutive one-based record indexes; each frame is validated before its
-	// execution, so earlier frames may have effects before a later frame fails.
-	// Mutations to the same resource preserve input order across frames, including
+	// Execute accepts bounded requests and emits indexed results incrementally.
+	// A stream selects one Store and operation kind. Each Read or Mutate request
+	// carries one record with a consecutive one-based index. It is validated
+	// before execution; earlier records may have effects before a later one fails.
+	// Mutations to the same resource preserve input order across requests, including
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.
 	// Never automatically replay mutations without individual application evidence.
-	// Scan and Native accept exactly one frame with index 1 followed by half-close.
+	// Scan and Native accept exactly one request with index 1 followed by half-close.
 	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
 	Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
 }
@@ -86,15 +86,15 @@ type StoreService_ExecuteClient = grpc.BidiStreamingClient[ExecuteRequest, Execu
 type StoreServiceServer interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error)
-	// Execute accepts bounded frames and emits indexed results incrementally.
-	// A stream selects one Store and operation kind. Read and Mutate frames use
-	// consecutive one-based record indexes; each frame is validated before its
-	// execution, so earlier frames may have effects before a later frame fails.
-	// Mutations to the same resource preserve input order across frames, including
+	// Execute accepts bounded requests and emits indexed results incrementally.
+	// A stream selects one Store and operation kind. Each Read or Mutate request
+	// carries one record with a consecutive one-based index. It is validated
+	// before execution; earlier records may have effects before a later one fails.
+	// Mutations to the same resource preserve input order across requests, including
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.
 	// Never automatically replay mutations without individual application evidence.
-	// Scan and Native accept exactly one frame with index 1 followed by half-close.
+	// Scan and Native accept exactly one request with index 1 followed by half-close.
 	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
 	Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
 	mustEmbedUnimplementedStoreServiceServer()
