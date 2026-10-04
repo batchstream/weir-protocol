@@ -49,7 +49,8 @@ ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained w
 a later RPC error occurs. Documents remain bounded at 2 MiB; streams preserve
 incremental consumption for Scan and Native responses. A Scan continuation is
 bound to its Store, backend profile, and traversal settings. Its checksum detects
-corruption; authorization is checked independently on every request.
+corruption only and provides no authentication or authorization. Requests still
+validate their Store and adapter-owned resources.
 
 ## Validate
 

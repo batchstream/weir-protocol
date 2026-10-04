@@ -25,7 +25,7 @@ func ScanPageSize(request *pb.ScanRequest) uint64 {
 }
 
 // Continuations carry bounded native backend state. The checksum detects
-// corruption, not authorization; Store access control still governs every Command.
+// corruption only; they provide no authentication or authorization.
 type scanContinuation struct {
 	Backend     string `json:"backend"`
 	Fingerprint string `json:"fingerprint"`
