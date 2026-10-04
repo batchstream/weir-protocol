@@ -16,7 +16,7 @@ func TestCanonicalRelativeResource(t *testing.T) {
 			t.Errorf("%s: %v", resource, err)
 		}
 	}
-	invalid := []string{"", "/records", "records/", "weir://mongo/db/c/s:a", "a//b", "a/..", "a/%61", "a/%2f", "a/%FF", "a/%00", "x?q=a", "x#f", strings.Repeat("a", MaxURI+1)}
+	invalid := []string{"", "/records", "records/", "weir://mongo/db/c/s:a", "a//b", "a/..", "a/%61", "a/%2f", "a/%FF", "a/%00", "x?q=a", "x#f", strings.Repeat("a", MaxResourceBytes+1)}
 	for _, resource := range invalid {
 		if _, err := ParseRelativeResource(resource); err == nil {
 			t.Errorf("accepted %q", resource)

@@ -150,7 +150,7 @@ func TestBatchResponseRejectsUnknownFieldsAtEveryLevel(t *testing.T) {
 
 func TestBatchResourcesRespectRelativePathBound(t *testing.T) {
 	for _, store := range []string{"a", "target", strings.Repeat("a", 63)} {
-		limit := MaxURI
+		limit := MaxResourceBytes
 		for _, extra := range []int{0, 1} {
 			resource := strings.Repeat("x", limit+extra)
 			read := &pb.ReadRequest{Resource: resource}
@@ -166,7 +166,7 @@ func FuzzBatchReadResource(f *testing.F) {
 	for _, resource := range []string{"data/s:key", "data/s:a%2Fb", "data/%E4%B8%AD", "data/%61", "data/%00", "/data", "data/", "weir://other/data"} {
 		f.Add("records", resource)
 	}
-	f.Add(strings.Repeat("a", 63), strings.Repeat("x", MaxURI))
+	f.Add(strings.Repeat("a", 63), strings.Repeat("x", MaxResourceBytes))
 	f.Fuzz(func(t *testing.T, store, resource string) {
 		segments, resourceError := ParseRelativeResource(resource)
 		expected := ValidStoreName(store) && resourceError == nil && len(segments) != 0

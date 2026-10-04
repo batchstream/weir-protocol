@@ -24,9 +24,7 @@ const (
 	MaxEvent                = MaxDocument + (8 << 10)
 	MaxBatchRequestBytes    = 32 << 20
 	MaxBatchResponseBytes   = 32 << 20
-	MaxURI                  = 4096
-	ResultOverhead          = 512
-	EntryOverhead           = 512
+	MaxResourceBytes        = 4096
 	MaxExpression           = 16 << 10
 	MaxSelector             = 16 << 10
 )
@@ -37,7 +35,7 @@ var mediaPattern = regexp.MustCompile(`^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$`)
 // ParseRelativeResource validates a canonical Store-relative path and returns its
 // decoded segments. Store identity is supplied separately by the request envelope.
 func ParseRelativeResource(resource string) ([]string, error) {
-	if resource == "" || len(resource) > MaxURI {
+	if resource == "" || len(resource) > MaxResourceBytes {
 		return nil, fmt.Errorf("missing or oversized relative resource")
 	}
 	pieces := strings.Split(resource, "/")
@@ -217,7 +215,7 @@ const NativeChunk = 64 << 10
 const NativeDescriptor = 64 << 10
 
 func ValidateNative(open *pb.NativeOpen) *pb.Failure {
-	if open == nil || proto.Size(open) > NativeDescriptor+MaxURI+256 || open.Descriptor_ == nil || len(open.Descriptor_.Data) > NativeDescriptor {
+	if open == nil || proto.Size(open) > NativeDescriptor+MaxResourceBytes+256 || open.Descriptor_ == nil || len(open.Descriptor_.Data) > NativeDescriptor {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Native Open bounds")
 	}
 	if !validRelativeResource(open.Resource) {
@@ -274,7 +272,7 @@ func ValidateCommand(command *pb.Command) error {
 }
 
 func validRelativeResource(resource string) bool {
-	if resource == "" || len(resource) > MaxURI {
+	if resource == "" || len(resource) > MaxResourceBytes {
 		return false
 	}
 	for {
