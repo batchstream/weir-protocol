@@ -98,21 +98,18 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	assertFields(t, messages.ByName("Event"), events)
 }
 
-func TestExplicitNativeScanAndLuaContract(t *testing.T) {
+func TestStoreNeutralNativeScanAndLuaContract(t *testing.T) {
 	messages := File_api_weir_v1_store_proto.Messages()
-	for _, name := range []protoreflect.Name{"NativeOpen", "ProgramTransform"} {
-		if messages.ByName(name) != nil {
-			t.Fatal("obsolete payload envelope remains public", name)
-		}
-	}
 	native := []fieldContract{
 		{name: "resource", kind: protoreflect.StringKind},
-		{name: "mongodb_command", kind: protoreflect.BytesKind},
-		{name: "search_http", kind: protoreflect.MessageKind, message: "weir.search.v1.HttpRequest"},
+		{name: "request", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
 	}
 	assertFields(t, messages.ByName("NativeRequest"), native)
+	if messages.ByName("NativeRequest").Oneofs().Len() != 0 || File_api_weir_v1_store_proto.Imports().Len() != 0 {
+		t.Fatal("public Native contract depends on backend-specific schema")
+	}
 	head := []fieldContract{
-		{name: "http", kind: protoreflect.MessageKind, message: "weir.search.v1.HttpResponse"},
+		{name: "metadata", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
 		{name: "body_content_type", kind: protoreflect.StringKind},
 	}
 	assertFields(t, messages.ByName("NativeHead"), head)

@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package weir.v1;
 
-import "api/weir/search/v1/http.proto";
-
 option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 
 // StoreService discovers Store endpoints and executes requests on their owners.
@@ -84,19 +82,14 @@ message Command {
   }
 }
 
-// NativeRequest selects one explicit backend operation with its complete input.
+// NativeRequest supplies an adapter-owned operation with its complete input.
 message NativeRequest {
-  // Canonical database/collection or index path relative to the selected Store.
+  // Canonical target path relative to the selected Store.
   string resource = 1;
 
-  // Exactly one backend request is required; it must match the Store's adapter.
-  oneof request {
-    // Nonempty BSON command document for the selected MongoDB database.
-    bytes mongodb_command = 2;
-
-    // Index-relative HTTP request for Elasticsearch or OpenSearch.
-    weir.search.v1.HttpRequest search_http = 3;
-  }
+  // Required opaque request document, with at most 8 MiB of payload bytes.
+  // The adapter interprets content_type and data; empty data is permitted.
+  Document request = 2;
 }
 
 // Event is a per-record result, Scan document/end, or Native head/body/end event.
@@ -152,7 +145,7 @@ enum FailureCode {
   // The caller or configured backend identity lacks access.
   PERMISSION_DENIED = 3;
 
-  // The required backend collection or index does not exist. A missing document
+  // The required adapter-owned target does not exist. A missing document
   // is a successful ReadResult.missing or a mutation precondition failure.
   TARGET_NOT_FOUND = 4;
 
@@ -306,18 +299,17 @@ message Projection {
   ProjectionMode mode = 1;
 
   // 1-128 paths, at most 512 bytes each and 8 KiB encoded Projection total;
-  // no operators, wildcard segments, or empty segments.
+  // no wildcard characters, control characters, or empty segments.
   repeated string fields = 2;
 }
 
 // ScanRequest reads one finite page from an adapter-owned ordered traversal.
 message ScanRequest {
-  // Canonical collection or index path relative to the selected Store.
+  // Canonical traversal target path relative to the selected Store.
   string resource = 1;
 
-  // Optional native MongoDB filter object (BSON) or Search query object (JSON),
-  // with at most 16 KiB of payload bytes.
-  // No outer filter/query/projection wrapper; absent means match all documents.
+  // Optional adapter-owned filter expression, with at most 16 KiB of payload bytes.
+  // The adapter interprets its content type and data; absent selects all documents.
   Document filter = 2;
 
   // Optional explicit field selection. Absent returns complete documents.
@@ -364,8 +356,9 @@ enum NativeCompletion {
 
 // NativeHead describes the native response before any body chunks are delivered.
 message NativeHead {
-  // Typed backend HTTP response for Search; absent for MongoDB command responses.
-  weir.search.v1.HttpResponse http = 1;
+  // Optional adapter-owned response metadata, with at most 64 KiB of payload bytes.
+  // Its content type and bytes are opaque to the public protocol.
+  Document metadata = 1;
 
   // MIME type of following body chunks; empty when no type was supplied.
   string body_content_type = 2;

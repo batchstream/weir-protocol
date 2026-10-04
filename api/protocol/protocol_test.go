@@ -100,7 +100,7 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 }
 
 func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
-	body := &pb.NativeRequest_MongodbCommand{MongodbCommand: make([]byte, MaxNativeBodyBytes)}
+	body := &pb.Document{ContentType: "application/vnd.example.native", Data: make([]byte, MaxNativeRequestBytes)}
 	native := &pb.NativeRequest{Resource: "records", Request: body}
 	operation := &pb.Command_Native{Native: native}
 	command := &pb.Command{Operation: operation}
@@ -113,7 +113,7 @@ func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
 		t.Fatal("Native record ordinal accepted")
 	}
 	request.Index = 1
-	body.MongodbCommand = make([]byte, MaxNativeBodyBytes+1)
+	body.Data = make([]byte, MaxNativeRequestBytes+1)
 	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("Native command envelope bytes ignored")
 	}

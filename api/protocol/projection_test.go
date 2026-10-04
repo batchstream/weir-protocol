@@ -15,6 +15,7 @@ func TestScanProjectionValidatesUniformFieldPaths(t *testing.T) {
 		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{"name", "profile.age", "_id"}},
 		{Mode: pb.ProjectionMode_EXCLUDE, Fields: []string{"private.token", "私人.字段"}},
 		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{"a", "ab", "a-b"}},
+		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{"$field", "a.$field"}},
 		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{strings.Repeat("x", MaxProjectionFieldBytes)}},
 	}
 	for _, projection := range valid {
@@ -31,7 +32,7 @@ func TestScanProjectionValidatesUniformFieldPaths(t *testing.T) {
 		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{"a", "a-b", "a.b"}},
 		{Mode: pb.ProjectionMode_EXCLUDE, Fields: []string{"profile.age", "profile"}},
 	}
-	for _, field := range []string{"", ".name", "name.", "a..b", "$field", "a.$field", "a.*", "a?", "a\x00b", string([]byte{0xff}), strings.Repeat("x", MaxProjectionFieldBytes+1)} {
+	for _, field := range []string{"", ".name", "name.", "a..b", "a.*", "a?", "a\x00b", string([]byte{0xff}), strings.Repeat("x", MaxProjectionFieldBytes+1)} {
 		projection := &pb.Projection{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{field}}
 		invalid = append(invalid, projection)
 	}
@@ -80,9 +81,9 @@ func TestScanProjectionAndFilterBindContinuation(t *testing.T) {
 	filter := &pb.Document{ContentType: "application/json", Data: []byte(`{"term":{"state":"ready"}}`)}
 	projection := &pb.Projection{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{"name"}}
 	request := &pb.ScanRequest{Resource: "records", Filter: filter, Projection: projection}
-	fingerprint := ScanFingerprint(request, "search", "search:elasticsearch")
+	fingerprint := ScanFingerprint(request, "example", "example:ordered")
 	state := []byte("opaque backend state")
-	token, err := EncodeScanToken("search:elasticsearch", fingerprint, state)
+	token, err := EncodeScanToken("example:ordered", fingerprint, state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +95,8 @@ func TestScanProjectionAndFilterBindContinuation(t *testing.T) {
 	} {
 		copied := proto.Clone(request).(*pb.ScanRequest)
 		mutate(copied)
-		changed := ScanFingerprint(copied, "search", "search:elasticsearch")
-		if _, err := DecodeScanToken(token, "search:elasticsearch", changed); err == nil {
+		changed := ScanFingerprint(copied, "example", "example:ordered")
+		if _, err := DecodeScanToken(token, "example:ordered", changed); err == nil {
 			t.Fatal("continuation accepted different filter or projection")
 		}
 	}

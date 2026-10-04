@@ -16,9 +16,6 @@ test "$("$grpc_plugin" --version)" = 'protoc-gen-go-grpc 1.5.1'
  --go_out=. --go_opt=module=github.com/batchstream/weir-protocol \
  --go-grpc_out=. --go-grpc_opt=module=github.com/batchstream/weir-protocol \
  api/weir/v1/store.proto
-"$protoc_bin" --plugin=protoc-gen-go="$go_plugin" \
- --go_out=. --go_opt=module=github.com/batchstream/weir-protocol \
- api/weir/search/v1/http.proto
 
 # Keep the named-struct-literal convention reproducible in generated Go code.
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/weir-protocol-generate.XXXXXX")
@@ -35,12 +32,10 @@ awk '
  END { if (count != 2) exit 1 }
 ' api/weir/v1/store_grpc.pb.go > "$work_dir/store_grpc.pb.go"
 mv "$work_dir/store_grpc.pb.go" api/weir/v1/store_grpc.pb.go
-for go_file in api/weir/v1/store.pb.go api/weir/search/v1/http.pb.go; do
- awk '
+awk '
   $0 == "\ttype x struct{}" { print; print "\tpackageMarker := x{}"; next }
   { if (sub(/reflect.TypeOf\(x\{\}\)/,"reflect.TypeOf(packageMarker)")) count++; print }
   END { if (count != 1) exit 1 }
- ' "$go_file" > "$work_dir/generated.pb.go"
- mv "$work_dir/generated.pb.go" "$go_file"
-done
-"$gofmt_bin" -w api/weir/v1/store.pb.go api/weir/v1/store_grpc.pb.go api/weir/search/v1/http.pb.go
+ ' api/weir/v1/store.pb.go > "$work_dir/generated.pb.go"
+mv "$work_dir/generated.pb.go" api/weir/v1/store.pb.go
+"$gofmt_bin" -w api/weir/v1/store.pb.go api/weir/v1/store_grpc.pb.go

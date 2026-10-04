@@ -7,7 +7,6 @@
 package weirv1
 
 import (
-	v1 "github.com/batchstream/weir-protocol/api/weir/search/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -34,7 +33,7 @@ const (
 	FailureCode_UNAUTHENTICATED FailureCode = 2
 	// The caller or configured backend identity lacks access.
 	FailureCode_PERMISSION_DENIED FailureCode = 3
-	// The required backend collection or index does not exist. A missing document
+	// The required adapter-owned target does not exist. A missing document
 	// is a successful ReadResult.missing or a mutation precondition failure.
 	FailureCode_TARGET_NOT_FOUND FailureCode = 4
 	// The target does not satisfy an operation precondition.
@@ -640,18 +639,14 @@ func (*Command_Scan) isCommand_Operation() {}
 
 func (*Command_Native) isCommand_Operation() {}
 
-// NativeRequest selects one explicit backend operation with its complete input.
+// NativeRequest supplies an adapter-owned operation with its complete input.
 type NativeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Canonical database/collection or index path relative to the selected Store.
+	// Canonical target path relative to the selected Store.
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Exactly one backend request is required; it must match the Store's adapter.
-	//
-	// Types that are valid to be assigned to Request:
-	//
-	//	*NativeRequest_MongodbCommand
-	//	*NativeRequest_SearchHttp
-	Request       isNativeRequest_Request `protobuf_oneof:"request"`
+	// Required opaque request document, with at most 8 MiB of payload bytes.
+	// The adapter interprets content_type and data; empty data is permitted.
+	Request       *Document `protobuf:"bytes,2,opt,name=request,proto3" json:"request,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -693,48 +688,12 @@ func (x *NativeRequest) GetResource() string {
 	return ""
 }
 
-func (x *NativeRequest) GetRequest() isNativeRequest_Request {
+func (x *NativeRequest) GetRequest() *Document {
 	if x != nil {
 		return x.Request
 	}
 	return nil
 }
-
-func (x *NativeRequest) GetMongodbCommand() []byte {
-	if x != nil {
-		if x, ok := x.Request.(*NativeRequest_MongodbCommand); ok {
-			return x.MongodbCommand
-		}
-	}
-	return nil
-}
-
-func (x *NativeRequest) GetSearchHttp() *v1.HttpRequest {
-	if x != nil {
-		if x, ok := x.Request.(*NativeRequest_SearchHttp); ok {
-			return x.SearchHttp
-		}
-	}
-	return nil
-}
-
-type isNativeRequest_Request interface {
-	isNativeRequest_Request()
-}
-
-type NativeRequest_MongodbCommand struct {
-	// Nonempty BSON command document for the selected MongoDB database.
-	MongodbCommand []byte `protobuf:"bytes,2,opt,name=mongodb_command,json=mongodbCommand,proto3,oneof"`
-}
-
-type NativeRequest_SearchHttp struct {
-	// Index-relative HTTP request for Elasticsearch or OpenSearch.
-	SearchHttp *v1.HttpRequest `protobuf:"bytes,3,opt,name=search_http,json=searchHttp,proto3,oneof"`
-}
-
-func (*NativeRequest_MongodbCommand) isNativeRequest_Request() {}
-
-func (*NativeRequest_SearchHttp) isNativeRequest_Request() {}
 
 // Event is a per-record result, Scan document/end, or Native head/body/end event.
 type Event struct {
@@ -1559,7 +1518,7 @@ type Projection struct {
 	// Required INCLUDE or EXCLUDE mode; mixing modes within one request is invalid.
 	Mode ProjectionMode `protobuf:"varint,1,opt,name=mode,proto3,enum=weir.v1.ProjectionMode" json:"mode,omitempty"`
 	// 1-128 paths, at most 512 bytes each and 8 KiB encoded Projection total;
-	// no operators, wildcard segments, or empty segments.
+	// no wildcard characters, control characters, or empty segments.
 	Fields        []string `protobuf:"bytes,2,rep,name=fields,proto3" json:"fields,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1612,11 +1571,10 @@ func (x *Projection) GetFields() []string {
 // ScanRequest reads one finite page from an adapter-owned ordered traversal.
 type ScanRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Canonical collection or index path relative to the selected Store.
+	// Canonical traversal target path relative to the selected Store.
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Optional native MongoDB filter object (BSON) or Search query object (JSON),
-	// with at most 16 KiB of payload bytes.
-	// No outer filter/query/projection wrapper; absent means match all documents.
+	// Optional adapter-owned filter expression, with at most 16 KiB of payload bytes.
+	// The adapter interprets its content type and data; absent selects all documents.
 	Filter *Document `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	// Optional explicit field selection. Absent returns complete documents.
 	Projection *Projection `protobuf:"bytes,3,opt,name=projection,proto3" json:"projection,omitempty"`
@@ -1771,8 +1729,9 @@ func (x *ScanEnd) GetExhausted() bool {
 // NativeHead describes the native response before any body chunks are delivered.
 type NativeHead struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Typed backend HTTP response for Search; absent for MongoDB command responses.
-	Http *v1.HttpResponse `protobuf:"bytes,1,opt,name=http,proto3" json:"http,omitempty"`
+	// Optional adapter-owned response metadata, with at most 64 KiB of payload bytes.
+	// Its content type and bytes are opaque to the public protocol.
+	Metadata *Document `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	// MIME type of following body chunks; empty when no type was supplied.
 	BodyContentType string `protobuf:"bytes,2,opt,name=body_content_type,json=bodyContentType,proto3" json:"body_content_type,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -1809,9 +1768,9 @@ func (*NativeHead) Descriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *NativeHead) GetHttp() *v1.HttpResponse {
+func (x *NativeHead) GetMetadata() *Document {
 	if x != nil {
-		return x.Http
+		return x.Metadata
 	}
 	return nil
 }
@@ -1882,7 +1841,7 @@ var File_api_weir_v1_store_proto protoreflect.FileDescriptor
 
 const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\n" +
-	"\x17api/weir/v1/store.proto\x12\aweir.v1\x1a\x1dapi/weir/search/v1/http.proto\"4\n" +
+	"\x17api/weir/v1/store.proto\x12\aweir.v1\"4\n" +
 	"\x13ResolveStoreRequest\x12\x1d\n" +
 	"\n" +
 	"store_name\x18\x01 \x01(\tR\tstoreName\"u\n" +
@@ -1905,13 +1864,10 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\x06mutate\x18\x02 \x01(\v2\x16.weir.v1.MutateRequestH\x00R\x06mutate\x12*\n" +
 	"\x04scan\x18\x03 \x01(\v2\x14.weir.v1.ScanRequestH\x00R\x04scan\x120\n" +
 	"\x06native\x18\x04 \x01(\v2\x16.weir.v1.NativeRequestH\x00R\x06nativeB\v\n" +
-	"\toperation\"\xa1\x01\n" +
+	"\toperation\"X\n" +
 	"\rNativeRequest\x12\x1a\n" +
-	"\bresource\x18\x01 \x01(\tR\bresource\x12)\n" +
-	"\x0fmongodb_command\x18\x02 \x01(\fH\x00R\x0emongodbCommand\x12>\n" +
-	"\vsearch_http\x18\x03 \x01(\v2\x1b.weir.search.v1.HttpRequestH\x00R\n" +
-	"searchHttpB\t\n" +
-	"\arequest\"\xe4\x02\n" +
+	"\bresource\x18\x01 \x01(\tR\bresource\x12+\n" +
+	"\arequest\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\arequest\"\xe4\x02\n" +
 	"\x05Event\x126\n" +
 	"\vread_result\x18\x01 \x01(\v2\x13.weir.v1.ReadResultH\x00R\n" +
 	"readResult\x12B\n" +
@@ -1972,10 +1928,10 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\x0edocument_count\x18\x01 \x01(\x04R\rdocumentCount\x12*\n" +
 	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure\x126\n" +
 	"\x17next_continuation_token\x18\x03 \x01(\fR\x15nextContinuationToken\x12\x1c\n" +
-	"\texhausted\x18\x04 \x01(\bR\texhausted\"j\n" +
+	"\texhausted\x18\x04 \x01(\bR\texhausted\"g\n" +
 	"\n" +
-	"NativeHead\x120\n" +
-	"\x04http\x18\x01 \x01(\v2\x1c.weir.search.v1.HttpResponseR\x04http\x12*\n" +
+	"NativeHead\x12-\n" +
+	"\bmetadata\x18\x01 \x01(\v2\x11.weir.v1.DocumentR\bmetadata\x12*\n" +
 	"\x11body_content_type\x18\x02 \x01(\tR\x0fbodyContentType\"r\n" +
 	"\tNativeEnd\x129\n" +
 	"\n" +
@@ -2056,8 +2012,6 @@ var file_api_weir_v1_store_proto_goTypes = []any{
 	(*ScanEnd)(nil),              // 22: weir.v1.ScanEnd
 	(*NativeHead)(nil),           // 23: weir.v1.NativeHead
 	(*NativeEnd)(nil),            // 24: weir.v1.NativeEnd
-	(*v1.HttpRequest)(nil),       // 25: weir.search.v1.HttpRequest
-	(*v1.HttpResponse)(nil),      // 26: weir.search.v1.HttpResponse
 }
 var file_api_weir_v1_store_proto_depIdxs = []int32{
 	8,  // 0: weir.v1.ExecuteRequest.command:type_name -> weir.v1.Command
@@ -2066,7 +2020,7 @@ var file_api_weir_v1_store_proto_depIdxs = []int32{
 	16, // 3: weir.v1.Command.mutate:type_name -> weir.v1.MutateRequest
 	21, // 4: weir.v1.Command.scan:type_name -> weir.v1.ScanRequest
 	9,  // 5: weir.v1.Command.native:type_name -> weir.v1.NativeRequest
-	25, // 6: weir.v1.NativeRequest.search_http:type_name -> weir.search.v1.HttpRequest
+	12, // 6: weir.v1.NativeRequest.request:type_name -> weir.v1.Document
 	15, // 7: weir.v1.Event.read_result:type_name -> weir.v1.ReadResult
 	17, // 8: weir.v1.Event.mutation_result:type_name -> weir.v1.MutationResult
 	12, // 9: weir.v1.Event.document:type_name -> weir.v1.Document
@@ -2091,7 +2045,7 @@ var file_api_weir_v1_store_proto_depIdxs = []int32{
 	12, // 28: weir.v1.ScanRequest.filter:type_name -> weir.v1.Document
 	20, // 29: weir.v1.ScanRequest.projection:type_name -> weir.v1.Projection
 	13, // 30: weir.v1.ScanEnd.failure:type_name -> weir.v1.Failure
-	26, // 31: weir.v1.NativeHead.http:type_name -> weir.search.v1.HttpResponse
+	12, // 31: weir.v1.NativeHead.metadata:type_name -> weir.v1.Document
 	3,  // 32: weir.v1.NativeEnd.completion:type_name -> weir.v1.NativeCompletion
 	13, // 33: weir.v1.NativeEnd.failure:type_name -> weir.v1.Failure
 	4,  // 34: weir.v1.StoreService.ResolveStore:input_type -> weir.v1.ResolveStoreRequest
@@ -2115,10 +2069,6 @@ func file_api_weir_v1_store_proto_init() {
 		(*Command_Mutate)(nil),
 		(*Command_Scan)(nil),
 		(*Command_Native)(nil),
-	}
-	file_api_weir_v1_store_proto_msgTypes[5].OneofWrappers = []any{
-		(*NativeRequest_MongodbCommand)(nil),
-		(*NativeRequest_SearchHttp)(nil),
 	}
 	file_api_weir_v1_store_proto_msgTypes[6].OneofWrappers = []any{
 		(*Event_ReadResult)(nil),
