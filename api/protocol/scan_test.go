@@ -10,8 +10,8 @@ import (
 
 func TestScanContinuationBindingAndBounds(t *testing.T) {
 	selector := &pb.Document{MediaType: "application/json", Data: []byte(`{"query":{"match_all":{}}}`)}
-	request := &pb.ScanRequest{Resource: "weir://search/records", Selector: selector, PageSize: 2}
-	fingerprint := ScanFingerprint(request, "search:elasticsearch")
+	request := &pb.ScanRequest{Resource: "records", Selector: selector, PageSize: 2}
+	fingerprint := ScanFingerprint(request, "search", "search:elasticsearch")
 	state := []byte(`{"pit":"native","after":3}`)
 	token, err := EncodeScanToken("search:elasticsearch", fingerprint, state)
 	if err != nil {
@@ -19,24 +19,29 @@ func TestScanContinuationBindingAndBounds(t *testing.T) {
 	}
 	request.PageSize = 3
 	request.ContinuationToken = token
-	if ScanFingerprint(request, "search:elasticsearch") != fingerprint {
+	if ScanFingerprint(request, "search", "search:elasticsearch") != fingerprint {
 		t.Fatal("changing page size changed traversal identity")
 	}
 	decoded, err := DecodeScanToken(token, "search:elasticsearch", fingerprint)
 	if err != nil || !bytes.Equal(decoded, state) {
 		t.Fatal("continuation roundtrip", err)
 	}
-	for _, resource := range []string{"weir://other/records", "weir://search/other"} {
+	for _, resource := range []string{"other", "records/s:other"} {
 		request.Resource = resource
-		if _, err := DecodeScanToken(token, "search:elasticsearch", ScanFingerprint(request, "search:elasticsearch")); err == nil {
+		if _, err := DecodeScanToken(token, "search:elasticsearch", ScanFingerprint(request, "search", "search:elasticsearch")); err == nil {
 			t.Fatal("accepted different traversal", resource)
 		}
+	}
+	request.Resource = "records"
+	otherStore := ScanFingerprint(request, "other", "search:elasticsearch")
+	if _, err := DecodeScanToken(token, "search:elasticsearch", otherStore); err == nil {
+		t.Fatal("accepted continuation from another Store")
 	}
 	if _, err := DecodeScanToken(token, "search:opensearch", fingerprint); err == nil {
 		t.Fatal("accepted another backend dialect")
 	}
-	corrupt := bytes.Replace(token, []byte(`"version":1`), []byte(`"version":2`), 1)
-	for _, invalid := range [][]byte{nil, append(token, ' '), corrupt, []byte(strings.Repeat("x", MaxScanToken+1)), []byte(`{"version":1,"state":"broken"}`)} {
+	corrupt := bytes.Replace(token, []byte(`"checksum":"`), []byte(`"checksum":"x`), 1)
+	for _, invalid := range [][]byte{nil, append(token, ' '), corrupt, []byte(strings.Repeat("x", MaxScanToken+1)), []byte(`{"state":"broken"}`)} {
 		if _, err := DecodeScanToken(invalid, "search:elasticsearch", fingerprint); err == nil {
 			t.Fatal("accepted malformed continuation")
 		}
@@ -62,7 +67,7 @@ func TestScanEndRequiresOneSuccessCheckpoint(t *testing.T) {
 	}
 	for _, test := range cases {
 		variant := &pb.Event_ScanEnd{ScanEnd: test.end}
-		event := &pb.Event{Version: 1, Value: variant}
+		event := &pb.Event{Value: variant}
 		if (ValidateEvent(event) == nil) != test.valid {
 			t.Fatal("invalid ScanEnd evidence accepted", test.end)
 		}

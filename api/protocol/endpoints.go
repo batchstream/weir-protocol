@@ -16,8 +16,7 @@ const (
 )
 
 func ValidStoreName(name string) bool {
-	parsed, segments, err := ParseResource("weir://" + name)
-	return err == nil && parsed == name && len(segments) == 0
+	return len(name) <= 63 && storePattern.MatchString(name)
 }
 
 // CanonicalEndpoint accepts portable IP or DNS host:port addresses without I/O.

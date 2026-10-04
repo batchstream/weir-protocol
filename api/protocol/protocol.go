@@ -17,42 +17,40 @@ import (
 )
 
 const (
-	MaxDocument           = 2 << 20
-	MaxPayload            = 9 << 20
-	MaxFrame              = MaxPayload + 128
-	MaxResponse           = MaxEvent + 64
-	MaxEvent              = MaxDocument + (8 << 10)
-	MaxBatchRequestBytes  = 32 << 20
-	MaxBatchResponseBytes = 32 << 20
-	MaxURI                = 4096
-	ResultOverhead        = 512
-	EntryOverhead         = 512
-	MaxExpression         = 16 << 10
-	MaxSelector           = 16 << 10
+	MaxDocument             = 2 << 20
+	MaxCommandBytes         = 9 << 20
+	MaxExecuteRequestBytes  = MaxCommandBytes + 128
+	MaxExecuteResponseBytes = MaxEvent + 64
+	MaxEvent                = MaxDocument + (8 << 10)
+	MaxBatchRequestBytes    = 32 << 20
+	MaxBatchResponseBytes   = 32 << 20
+	MaxResourceBytes        = 4096
+	MaxExpression           = 16 << 10
+	MaxSelector             = 16 << 10
 )
 
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9]){0,62}$`)
 var mediaPattern = regexp.MustCompile(`^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$`)
 
-func ParseResource(raw string) (string, []string, error) {
-	if len(raw) > MaxURI || !strings.HasPrefix(raw, "weir://") {
-		return "", nil, fmt.Errorf("invalid resource")
+// ParseRelativeResource validates a canonical Store-relative path and returns its
+// decoded segments. Store identity is supplied separately by the request envelope.
+func ParseRelativeResource(resource string) ([]string, error) {
+	if resource == "" || len(resource) > MaxResourceBytes {
+		return nil, fmt.Errorf("missing or oversized relative resource")
 	}
-	pieces := strings.Split(strings.TrimPrefix(raw, "weir://"), "/")
-	if len(pieces[0]) > 63 || !storePattern.MatchString(pieces[0]) {
-		return "", nil, fmt.Errorf("invalid store")
-	}
-	segments := make([]string, 0, len(pieces)-1)
-	for _, piece := range pieces[1:] {
+	pieces := strings.Split(resource, "/")
+	segments := make([]string, len(pieces))
+	for index, piece := range pieces {
 		segment, err := decodeResourceSegment(piece)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
-		segments = append(segments, segment)
+		segments[index] = segment
 	}
-	return pieces[0], segments, nil
+	return segments, nil
 }
 
+// EncodeSegment percent-encodes one path component using canonical uppercase hex.
 func EncodeSegment(s string) string {
 	escapes := 0
 	for i := 0; i < len(s); i++ {
@@ -125,41 +123,6 @@ func Missing() *pb.ReadResult {
 	return r
 }
 
-func ResultError(op *pb.Operation, outcome pb.MutationOutcome, f *pb.Failure) *pb.Result {
-	r := &pb.Result{Index: op.GetIndex()}
-	if op.GetRead() != nil {
-		r.Result = &pb.Result_Read{Read: ReadFailure(f)}
-	} else {
-		r.Result = &pb.Result_Mutation{Mutation: Mutation(outcome, f)}
-	}
-	return r
-}
-
-func Validate(op *pb.Operation, store string) *pb.Failure {
-	if op == nil || proto.Size(op) > MaxFrame {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized operation")
-	}
-	var resource string
-	var failure *pb.Failure
-	if read := op.GetRead(); read != nil {
-		resource = read.Resource
-		failure = validateReadFields(read)
-	} else if mutation := op.GetMutate(); mutation != nil {
-		resource = mutation.Resource
-		failure = validateMutationFields(mutation)
-	} else {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing operation")
-	}
-	if failure != nil {
-		return failure
-	}
-	name, segments, err := ParseResource(resource)
-	if err != nil || len(segments) == 0 || name != store {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid or wrong-store resource")
-	}
-	return nil
-}
-
 func validateReadFields(read *pb.ReadRequest) *pb.Failure {
 	if read.ReadMediaType != "" && !validMedia(read.ReadMediaType) {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid media type")
@@ -229,20 +192,12 @@ func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
 
 func validMedia(s string) bool { return len(s) <= 127 && mediaPattern.MatchString(s) }
 
-func Resource(op *pb.Operation) string {
-	if r := op.GetRead(); r != nil {
-		return r.Resource
-	}
-	return op.GetMutate().GetResource()
-}
-
-func ValidateScan(req *pb.ScanRequest, store string) *pb.Failure {
-	if req == nil || proto.Size(req) > MaxFrame {
+func ValidateScan(req *pb.ScanRequest) *pb.Failure {
+	if req == nil || proto.Size(req) > MaxExecuteRequestBytes {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized Scan")
 	}
-	name, segments, err := ParseResource(req.Resource)
-	if err != nil || name != store || len(segments) == 0 {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid or wrong-store Scan resource")
+	if !validRelativeResource(req.Resource) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Scan relative resource")
 	}
 	if req.ReadMediaType != "" && !validMedia(req.ReadMediaType) {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Scan media type")
@@ -259,13 +214,12 @@ func ValidateScan(req *pb.ScanRequest, store string) *pb.Failure {
 const NativeChunk = 64 << 10
 const NativeDescriptor = 64 << 10
 
-func ValidateNative(open *pb.NativeOpen, store string) *pb.Failure {
-	if open == nil || proto.Size(open) > NativeDescriptor+MaxURI+256 || open.Descriptor_ == nil || len(open.Descriptor_.Data) > NativeDescriptor {
+func ValidateNative(open *pb.NativeOpen) *pb.Failure {
+	if open == nil || proto.Size(open) > NativeDescriptor+MaxResourceBytes+256 || open.Descriptor_ == nil || len(open.Descriptor_.Data) > NativeDescriptor {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Native Open bounds")
 	}
-	name, _, err := ParseResource(open.Resource)
-	if err != nil || name != store {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Native resource")
+	if !validRelativeResource(open.Resource) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Native relative resource")
 	}
 	return nil
 }
@@ -281,55 +235,44 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 
 // ValidateExecuteRequest validates one typed Scan or Native request.
 func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
-	if req == nil || !ValidStoreName(req.StoreName) || proto.Size(req) > MaxFrame || hasUnknown(req.ProtoReflect()) {
+	if req == nil || !ValidStoreName(req.StoreName) || proto.Size(req) > MaxExecuteRequestBytes || hasUnknown(req.ProtoReflect()) {
 		return fmt.Errorf("invalid Execute request envelope")
 	}
 	return ValidateCommand(req.Command)
 }
 
 func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
-	if response == nil || proto.Size(response) > MaxResponse || hasUnknown(response.ProtoReflect()) {
+	if response == nil || proto.Size(response) > MaxExecuteResponseBytes || hasUnknown(response.ProtoReflect()) {
 		return fmt.Errorf("invalid Execute response envelope")
 	}
 	return ValidateEvent(response.Event)
 }
 
-// ValidateCommand requires a versioned Scan or Native with a canonical relative resource.
+// ValidateCommand requires one Scan or Native request with a canonical relative path.
 func ValidateCommand(command *pb.Command) error {
-	if command == nil || command.Version != 1 || command.Operation == nil || proto.Size(command) > MaxPayload || hasUnknown(command.ProtoReflect()) {
-		return fmt.Errorf("unsupported command version, fields or bounds")
+	if command == nil || command.Operation == nil || proto.Size(command) > MaxCommandBytes || hasUnknown(command.ProtoReflect()) {
+		return fmt.Errorf("invalid command fields or byte bound")
 	}
-	var resource string
+	var failure *pb.Failure
 	switch operation := command.Operation.(type) {
 	case *pb.Command_Scan:
-		if operation.Scan != nil {
-			resource = operation.Scan.Resource
-		}
+		failure = ValidateScan(operation.Scan)
 	case *pb.Command_Native:
-		if operation.Native != nil && operation.Native.Open != nil {
-			resource = operation.Native.Open.Resource
+		if operation.Native == nil {
+			return fmt.Errorf("missing Native request")
 		}
+		failure = ValidateNative(operation.Native.Open)
+	default:
+		return fmt.Errorf("missing command operation")
 	}
-	if !validRelativeResource(resource) {
-		return fmt.Errorf("command requires a canonical relative resource")
-	}
-	if scan := command.GetScan(); scan != nil {
-		normalized := &pb.ScanRequest{Resource: "weir://target/" + scan.Resource, Selector: scan.Selector, ReadMediaType: scan.ReadMediaType, PageSize: scan.PageSize, ContinuationToken: scan.ContinuationToken}
-		if failure := ValidateScan(normalized, "target"); failure != nil {
-			return fmt.Errorf("%s", failure.Message)
-		}
-	} else if native := command.GetNative(); native != nil {
-		open := native.Open
-		normalized := &pb.NativeOpen{Resource: "weir://target/" + open.Resource, Descriptor_: open.Descriptor_, BodyMediaType: open.BodyMediaType}
-		if failure := ValidateNative(normalized, "target"); failure != nil {
-			return fmt.Errorf("%s", failure.Message)
-		}
+	if failure != nil {
+		return fmt.Errorf("%s", failure.Message)
 	}
 	return nil
 }
 
 func validRelativeResource(resource string) bool {
-	if resource == "" || len(resource) > MaxURI-len("weir://target/") {
+	if resource == "" || len(resource) > MaxResourceBytes {
 		return false
 	}
 	for {
@@ -360,8 +303,8 @@ func decodeResourceSegment(raw string) (string, error) {
 	return segment, nil
 }
 
-// Unknown fields are rejected throughout the typed payload. Adding fields to
-// version 1 therefore requires every client and executor to update together.
+// Unknown fields are rejected throughout the typed payload so invalid or
+// mismatched request and response schemas fail before their values are consumed.
 func hasUnknown(message protoreflect.Message) bool {
 	if len(message.GetUnknown()) != 0 {
 		return true
@@ -390,8 +333,8 @@ func hasUnknown(message protoreflect.Message) bool {
 }
 
 func ValidateEvent(event *pb.Event) error {
-	if event == nil || event.Version != 1 || event.Value == nil || hasUnknown(event.ProtoReflect()) || proto.Size(event) > MaxEvent {
-		return fmt.Errorf("invalid event version or bounds")
+	if event == nil || event.Value == nil || hasUnknown(event.ProtoReflect()) || proto.Size(event) > MaxEvent {
+		return fmt.Errorf("invalid event fields or byte bound")
 	}
 	valid := false
 	switch value := event.Value.(type) {

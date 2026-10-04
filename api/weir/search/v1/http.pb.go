@@ -21,11 +21,13 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Adapter-owned profile: application/vnd.weir.search-http.v1+protobuf.
+// Header preserves one HTTP header name and its ordered values.
 type Header struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Values        []string               `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Lowercase HTTP header name; the Search adapter validates allowed request names.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Values associated with this header, without folding them into one string.
+	Values        []string `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -74,12 +76,19 @@ func (x *Header) GetValues() []string {
 	return nil
 }
 
+// Request is the Search Native descriptor encoded with the profile media type
+// application/vnd.weir.search-http.v1+protobuf. The selected Store resource names
+// the concrete index; the adapter adds that index before this relative HTTP path.
 type Request struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Method        string                 `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
-	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
-	Query         string                 `protobuf:"bytes,3,opt,name=query,proto3" json:"query,omitempty"`
-	Headers       []*Header              `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// HTTP method supported by the adapter for this operation.
+	Method string `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
+	// Index-relative HTTP path beginning with '/', such as /_bulk or /_doc/id.
+	Path string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// Canonically encoded query string without a leading '?'.
+	Query string `protobuf:"bytes,3,opt,name=query,proto3" json:"query,omitempty"`
+	// Optional request headers allowed by the Search adapter.
+	Headers       []*Header `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -142,10 +151,14 @@ func (x *Request) GetHeaders() []*Header {
 	return nil
 }
 
+// Response is the Search Native response metadata in the same profile format.
+// HTTP status is preserved independently of the NativeEnd transport evidence.
 type Response struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	StatusCode    uint32                 `protobuf:"varint,1,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
-	Headers       []*Header              `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Original backend HTTP status code, including non-success responses.
+	StatusCode uint32 `protobuf:"varint,1,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	// Backend response headers that can be represented by the Native adapter.
+	Headers       []*Header `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

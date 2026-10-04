@@ -29,20 +29,22 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// StoreService is the public discovery and execution API. Initialize through
-// ResolveStore, then connect directly to a returned Store endpoint for execution.
+// StoreService discovers Store endpoints and executes requests on their owners.
+// Initialize through ResolveStore, then connect directly to a returned endpoint.
 type StoreServiceClient interface {
+	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error)
-	// Every batch is bound to one Store and results preserve request order.
-	// Requests are validated together before any operation starts. Mutations are
-	// independent, not transactional, and must never be automatically replayed.
-	// Mutations to the same resource execute in input order, including after
-	// item failures. Different resources may execute concurrently. Across RPCs,
-	// ordering follows the database semantics.
+	// Read validates the entire batch before execution and preserves input order.
+	// Missing documents and backend failures are reported separately for each item.
 	Read(ctx context.Context, in *ReadBatchRequest, opts ...grpc.CallOption) (*ReadBatchResponse, error)
+	// Mutate validates the entire batch before executing independent mutations.
+	// Mutations to one resource run in input order, including after item failures;
+	// different resources may run concurrently. A batch is not a transaction.
+	// Across RPCs, ordering follows the database semantics. Never replay mutations
+	// automatically: a failed RPC cannot prove that its mutations were not applied.
 	Mutate(ctx context.Context, in *MutateBatchRequest, opts ...grpc.CallOption) (*MutateBatchResponse, error)
-	// Execute is one finite Scan or Native request with incrementally delivered
-	// typed events. Final gRPC OK is required to commit a Scan checkpoint.
+	// Execute runs one finite Scan or Native request and streams typed events.
+	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
 	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecuteResponse], error)
 }
 
@@ -108,20 +110,22 @@ type StoreService_ExecuteClient = grpc.ServerStreamingClient[ExecuteResponse]
 // All implementations must embed UnimplementedStoreServiceServer
 // for forward compatibility.
 //
-// StoreService is the public discovery and execution API. Initialize through
-// ResolveStore, then connect directly to a returned Store endpoint for execution.
+// StoreService discovers Store endpoints and executes requests on their owners.
+// Initialize through ResolveStore, then connect directly to a returned endpoint.
 type StoreServiceServer interface {
+	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error)
-	// Every batch is bound to one Store and results preserve request order.
-	// Requests are validated together before any operation starts. Mutations are
-	// independent, not transactional, and must never be automatically replayed.
-	// Mutations to the same resource execute in input order, including after
-	// item failures. Different resources may execute concurrently. Across RPCs,
-	// ordering follows the database semantics.
+	// Read validates the entire batch before execution and preserves input order.
+	// Missing documents and backend failures are reported separately for each item.
 	Read(context.Context, *ReadBatchRequest) (*ReadBatchResponse, error)
+	// Mutate validates the entire batch before executing independent mutations.
+	// Mutations to one resource run in input order, including after item failures;
+	// different resources may run concurrently. A batch is not a transaction.
+	// Across RPCs, ordering follows the database semantics. Never replay mutations
+	// automatically: a failed RPC cannot prove that its mutations were not applied.
 	Mutate(context.Context, *MutateBatchRequest) (*MutateBatchResponse, error)
-	// Execute is one finite Scan or Native request with incrementally delivered
-	// typed events. Final gRPC OK is required to commit a Scan checkpoint.
+	// Execute runs one finite Scan or Native request and streams typed events.
+	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
 	Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecuteResponse]) error
 	mustEmbedUnimplementedStoreServiceServer()
 }
