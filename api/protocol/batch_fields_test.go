@@ -25,8 +25,8 @@ func TestBatchReadFieldPolicy(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request := &pb.ReadBatchRequest{StoreName: "records", Requests: []*pb.ReadRequest{test.read}}
-			if err := ValidateReadBatchRequest(request); (err == nil) != test.valid {
+			request := readFrame("records", 1, []*pb.ReadRequest{test.read})
+			if err := ValidateExecuteRequest(request); (err == nil) != test.valid {
 				t.Fatalf("valid=%v: %v", test.valid, err)
 			}
 		})
@@ -65,8 +65,8 @@ func TestBatchMutationFieldPolicy(t *testing.T) {
 		{Resource: "data/s:key", Action: expressionAction},
 	}
 	for _, mutation := range valid {
-		request := &pb.MutateBatchRequest{StoreName: "records", Requests: []*pb.MutateRequest{mutation}}
-		if err := ValidateMutateBatchRequest(request); err != nil {
+		request := mutationFrame("records", 1, []*pb.MutateRequest{mutation})
+		if err := ValidateExecuteRequest(request); err != nil {
 			t.Fatalf("valid opaque mutation rejected: %v", err)
 		}
 	}
@@ -82,67 +82,67 @@ func TestBatchMutationFieldPolicy(t *testing.T) {
 		{Resource: "data/s:key", Action: put, AdapterOptions: oversizedDocument},
 	}
 	for _, mutation := range invalid {
-		request := &pb.MutateBatchRequest{StoreName: "records", Requests: []*pb.MutateRequest{valid[0], mutation}}
-		if err := ValidateMutateBatchRequest(request); err == nil {
+		request := mutationFrame("records", 1, []*pb.MutateRequest{valid[0], mutation})
+		if err := ValidateExecuteRequest(request); err == nil {
 			t.Fatal("invalid later mutation accepted", mutation)
 		}
 	}
 	for _, source := range [][]byte{nil, []byte(strings.Repeat("x", MaxExpression+1)), {0xff}, {'x', 0}, []byte("\x1bLua")} {
 		program.Source = source
-		request := &pb.MutateBatchRequest{StoreName: "records", Requests: []*pb.MutateRequest{valid[4]}}
-		if err := ValidateMutateBatchRequest(request); err == nil {
+		request := mutationFrame("records", 1, []*pb.MutateRequest{valid[4]})
+		if err := ValidateExecuteRequest(request); err == nil {
 			t.Fatal("invalid program source accepted")
 		}
 	}
 	program.Source = []byte(strings.Repeat("x", MaxExpression))
-	request := &pb.MutateBatchRequest{StoreName: "records", Requests: []*pb.MutateRequest{valid[4]}}
-	if err := ValidateMutateBatchRequest(request); err != nil {
+	request := mutationFrame("records", 1, []*pb.MutateRequest{valid[4]})
+	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal("program at the byte bound rejected", err)
 	}
 	program.Runtime = "lua.v2"
-	if err := ValidateMutateBatchRequest(request); err == nil {
+	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("unsupported runtime accepted")
 	}
 	program.Runtime = "lua.v1"
 	program.Input = invalidDocument
-	if err := ValidateMutateBatchRequest(request); err == nil {
+	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("invalid program input accepted")
 	}
 	for _, data := range [][]byte{nil, make([]byte, MaxExpression+1)} {
 		document.Data = data
-		request.Requests = []*pb.MutateRequest{valid[5]}
-		if err := ValidateMutateBatchRequest(request); err == nil {
+		request.Command.GetMutate().Requests = []*pb.MutateRequest{valid[5]}
+		if err := ValidateExecuteRequest(request); err == nil {
 			t.Fatal("empty or oversized expression accepted")
 		}
 	}
 }
 
-func TestBatchResponseRejectsUnknownFieldsAtEveryLevel(t *testing.T) {
-	document := &pb.Document{MediaType: "application/opaque"}
+func TestRecordResponsesRejectUnknownAtEveryNestedLevel(t *testing.T) {
+	document := &pb.Document{MediaType: "application/opaque", Data: []byte("uninterpreted")}
 	read := ReadDocument(document)
-	reads := &pb.ReadBatchResponse{Results: []*pb.ReadResult{read, Missing(), ReadFailure(Fail(pb.FailureCode_UNAVAILABLE, "unavailable"))}}
-	for position := range 6 {
-		copied := proto.Clone(reads).(*pb.ReadBatchResponse)
-		messages := []proto.Message{copied, copied.Results[0], copied.Results[0].GetDocument(), copied.Results[1].GetMissing(), copied.Results[2], copied.Results[2].GetFailure()}
-		if err := ValidateReadBatchResponse(copied, 3); err != nil {
+	response := readResponse(1, read)
+	for position := range 4 {
+		copied := proto.Clone(response).(*pb.ExecuteResponse)
+		messages := []proto.Message{copied, copied.Event, copied.Event.GetReadResult(), copied.Event.GetReadResult().GetDocument()}
+		if err := ValidateExecuteResponse(copied); err != nil {
 			t.Fatal("fixture must be valid before mutation", err)
 		}
-		messages[position].ProtoReflect().SetUnknown([]byte{0x78, 1})
-		if err := ValidateReadBatchResponse(copied, 3); err == nil {
+		messages[position].ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
+		if err := ValidateExecuteResponse(copied); err == nil {
 			t.Fatalf("unknown Read fields accepted at level %d", position)
 		}
 	}
 	failure := Fail(pb.FailureCode_UNAVAILABLE, "unavailable")
 	mutation := Mutation(pb.MutationOutcome_NOT_APPLIED, failure)
-	mutations := &pb.MutateBatchResponse{Results: []*pb.MutationResult{mutation}}
-	for position := range 3 {
-		copied := proto.Clone(mutations).(*pb.MutateBatchResponse)
-		messages := []proto.Message{copied, copied.Results[0], copied.Results[0].Failure}
-		if err := ValidateMutateBatchResponse(copied, 1); err != nil {
+	response = mutationResponse(1, mutation)
+	for position := range 4 {
+		copied := proto.Clone(response).(*pb.ExecuteResponse)
+		messages := []proto.Message{copied, copied.Event, copied.Event.GetMutationResult(), copied.Event.GetMutationResult().Failure}
+		if err := ValidateExecuteResponse(copied); err != nil {
 			t.Fatal("fixture must be valid before mutation", err)
 		}
-		messages[position].ProtoReflect().SetUnknown([]byte{0x78, 1})
-		if err := ValidateMutateBatchResponse(copied, 1); err == nil {
+		messages[position].ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
+		if err := ValidateExecuteResponse(copied); err == nil {
 			t.Fatalf("unknown Mutate fields accepted at level %d", position)
 		}
 	}
@@ -154,8 +154,8 @@ func TestBatchResourcesRespectRelativePathBound(t *testing.T) {
 		for _, extra := range []int{0, 1} {
 			resource := strings.Repeat("x", limit+extra)
 			read := &pb.ReadRequest{Resource: resource}
-			request := &pb.ReadBatchRequest{StoreName: store, Requests: []*pb.ReadRequest{read}}
-			if err := ValidateReadBatchRequest(request); (err == nil) != (extra == 0) {
+			request := readFrame(store, 1, []*pb.ReadRequest{read})
+			if err := ValidateExecuteRequest(request); (err == nil) != (extra == 0) {
 				t.Fatalf("store length %d, resource length %d: %v", len(store), len(resource), err)
 			}
 		}
@@ -171,8 +171,8 @@ func FuzzBatchReadResource(f *testing.F) {
 		segments, resourceError := ParseRelativeResource(resource)
 		expected := ValidStoreName(store) && resourceError == nil && len(segments) != 0
 		read := &pb.ReadRequest{Resource: resource}
-		request := &pb.ReadBatchRequest{StoreName: store, Requests: []*pb.ReadRequest{read}}
-		if err := ValidateReadBatchRequest(request); (err == nil) != expected {
+		request := readFrame(store, 1, []*pb.ReadRequest{read})
+		if err := ValidateExecuteRequest(request); (err == nil) != expected {
 			t.Fatalf("Store %q resource %q expected %v: %v", store, resource, expected, err)
 		}
 	})

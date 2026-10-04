@@ -4,15 +4,15 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.3.0
+go get github.com/batchstream/weir-protocol@v0.4.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
 This module depends on neither repository, including through test dependencies.
 It contains no peer discovery protocol, server lifecycle, backend adapter, or SDK.
 
-- `api/weir/v1`: `weir.v1.StoreService.ResolveStore`, unary `Read`/`Mutate`
-  batches and server-streaming `Execute` for one Scan or Native request.
+- `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
+  `Execute` for Read, Mutate, Scan, and Native.
 - `api/weir/search/v1`: public Search HTTP descriptor DTOs.
 - `api/protocol`: common envelope, endpoint, resource and scan validation.
 - `api/netlimit`: bounded standard Go DNS transport.
@@ -25,26 +25,41 @@ Weir server repository.
 
 ## Batch and streaming semantics
 
-Every Read or Mutate batch selects one Store and uses canonical relative resource
-paths. Requests are validated together before any backend operation starts. Both
-request and response limits are 32 MiB of complete protobuf encoding, including
-envelopes. There is no separate item-count limit. Results match input positions.
+Execute selects one Store and operation kind for its lifetime. Read and Mutate
+commands contain nonempty frames of at most 1024 records and 5 MiB of complete
+Command encoding. These are independent per-frame bounds; there is no item or
+byte bound on the total logical call. A 2 MiB document plus maximal adapter
+options or program input fits one record frame. The common Execute request bound
+is 9 MiB plus envelope space so Native can carry its complete bounded body.
+
+Each frame is validated before that frame starts execution. Earlier frames may
+already have effects when a later frame fails validation. The first request index
+is 1; later frame indexes are consecutive first-record ordinals. Index arithmetic
+must leave the next frame ordinal representable. Every record produces one bounded
+ExecuteResponse with its ordinal and typed ReadResult or MutationResult, in input
+order. Servers and clients enforce Store/kind consistency and index sequences.
+Stateless protocol validators check each envelope, nested fields, and bounds;
+unknown fields are rejected once throughout each frame's message tree.
+
 Read results distinguish missing documents and individual backend failures.
+Clients can consume results incrementally; SDK convenience collectors may retain
+results at the caller's request. A frame is not a whole-call result vector.
 
 Store names and resource paths are separate fields. Resource paths are bounded
 at 4096 encoded bytes and use canonical percent-encoded segments without a scheme
 or leading slash. `ParseRelativeResource` validates and decodes these paths;
 `EncodeSegment` constructs individual segments.
 
-A mutation batch is not a transaction. Mutations to the same resource execute in
-input order, including after a failed item; different resources may run in parallel.
-Ordering across RPCs follows the database semantics. An APPLIED result may also
+A mutation stream is not a transaction. Mutations to the same resource execute in
+input order across frames, including after a failed item; different resources may
+run in parallel. Ordering across streams follows the database semantics. An APPLIED result may also
 carry a subsequent acknowledgement failure; other outcomes require a Failure.
-A failed unary RPC provides no individual acknowledgements, so every submitted
-mutation may have applied. Clients must never automatically replay that batch.
+An individually received MutationResult retains its application evidence if the
+stream later fails. A submitted mutation without a result may have applied.
+Clients must never automatically replay unacknowledged mutations.
 
-Execute accepts one Command containing Scan or Native and streams one typed Event
-per response. Scan checkpoints require a matching document count, a terminal
+Scan and Native accept one Command at index 1, followed by client half-close, and
+emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
 ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained when
 a later RPC error occurs. Documents remain bounded at 2 MiB; streams preserve
 incremental consumption for Scan and Native responses. A Scan continuation is
@@ -103,7 +118,7 @@ project's named struct style in generated code. Regeneration is byte reproducibl
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.3.0
+gh workflow run release.yml --ref main -f version=v0.4.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete

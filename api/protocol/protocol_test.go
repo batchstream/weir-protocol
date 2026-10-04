@@ -65,14 +65,16 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 	scan := &pb.ScanRequest{Resource: "records", PageSize: 1}
 	variant := &pb.Command_Scan{Scan: scan}
 	command := &pb.Command{Operation: variant}
-	request := &pb.ExecuteRequest{StoreName: "records", Command: command}
+	request := &pb.ExecuteRequest{StoreName: "records", Index: 1, Command: command}
 	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*pb.ExecuteRequest){
 		func(r *pb.ExecuteRequest) { r.StoreName = "bad/store" },
+		func(r *pb.ExecuteRequest) { r.Index = 0 },
+		func(r *pb.ExecuteRequest) { r.Index = 2 },
 		func(r *pb.ExecuteRequest) { r.Command = nil },
-		func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0x18, 1}) },
+		func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
 		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "weir://records/data" },
 		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "/data" },
 		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "data/%6B" },
@@ -87,13 +89,45 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 	document := &pb.Document{MediaType: "application/octet-stream", Data: make([]byte, MaxDocument)}
 	value := &pb.Event_Document{Document: document}
 	event := &pb.Event{Value: value}
-	response := &pb.ExecuteResponse{Event: event}
+	response := &pb.ExecuteResponse{Index: 1, Event: event}
 	if err := ValidateExecuteResponse(response); err != nil {
 		t.Fatal(err)
 	}
-	response.ProtoReflect().SetUnknown([]byte{0x10, 1})
+	response.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
 	if err := ValidateExecuteResponse(response); err == nil {
 		t.Fatal("unknown response accepted")
+	}
+}
+
+func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
+	descriptor := &pb.Document{MediaType: "application/opaque", Data: []byte("descriptor")}
+	open := &pb.NativeOpen{Resource: "records", Descriptor_: descriptor}
+	native := &pb.NativeRequest{Open: open, Body: make([]byte, 8<<20)}
+	operation := &pb.Command_Native{Native: native}
+	command := &pb.Command{Operation: operation}
+	request := &pb.ExecuteRequest{StoreName: "records", Index: 1, Command: command}
+	if err := ValidateExecuteRequest(request); err != nil {
+		t.Fatal("bounded Native body rejected", err)
+	}
+	request.Index = 2
+	if err := ValidateExecuteRequest(request); err == nil {
+		t.Fatal("Native record ordinal accepted")
+	}
+	request.Index = 1
+	native.Body = make([]byte, MaxCommandBytes)
+	if err := ValidateExecuteRequest(request); err == nil {
+		t.Fatal("Native command envelope bytes ignored")
+	}
+	head := &pb.NativeHead{}
+	value := &pb.Event_Head{Head: head}
+	event := &pb.Event{Value: value}
+	response := &pb.ExecuteResponse{Index: 1, Event: event}
+	if err := ValidateExecuteResponse(response); err != nil {
+		t.Fatal(err)
+	}
+	response.Index = 2
+	if err := ValidateExecuteResponse(response); err == nil {
+		t.Fatal("Native response record ordinal accepted")
 	}
 }
 
