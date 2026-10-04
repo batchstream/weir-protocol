@@ -21,8 +21,8 @@ func TestPublicSearchDescriptorContract(t *testing.T) {
 		fields []protoreflect.Name
 	}{
 		{name: "Header", fields: []protoreflect.Name{"name", "values"}},
-		{name: "Request", fields: []protoreflect.Name{"method", "path", "query", "headers"}},
-		{name: "Response", fields: []protoreflect.Name{"status_code", "headers"}},
+		{name: "HttpRequest", fields: []protoreflect.Name{"method", "path", "query", "headers", "body_content_type", "body"}},
+		{name: "HttpResponse", fields: []protoreflect.Name{"status_code", "headers"}},
 	}
 	for _, expected := range cases {
 		message := file.Messages().ByName(expected.name)
@@ -38,6 +38,10 @@ func TestPublicSearchDescriptorContract(t *testing.T) {
 			case "headers":
 				if !field.IsList() || field.Kind() != protoreflect.MessageKind || field.Message().FullName() != "weir.search.v1.Header" {
 					t.Fatal("Search headers wire type changed", field)
+				}
+			case "body":
+				if field.IsList() || field.Kind() != protoreflect.BytesKind {
+					t.Fatal("Search body wire type changed", field)
 				}
 			case "status_code":
 				if field.IsList() || field.Kind() != protoreflect.Uint32Kind {

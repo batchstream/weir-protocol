@@ -13,10 +13,9 @@ message Header {
   repeated string values = 2;
 }
 
-// Request is the Search Native descriptor encoded with the profile media type
-// application/vnd.weir.search-http.v1+protobuf. The selected Store resource names
+// HttpRequest is one Search Native request. The selected Store resource names
 // the concrete index; the adapter adds that index before this relative HTTP path.
-message Request {
+message HttpRequest {
   // HTTP method supported by the adapter for this operation.
   string method = 1;
 
@@ -28,11 +27,17 @@ message Request {
 
   // Optional request headers allowed by the Search adapter.
   repeated Header headers = 4;
+
+  // MIME type of body without parameters; required when body is nonempty.
+  string body_content_type = 5;
+
+  // Complete request body, at most 8 MiB, supplied independently of HTTP framing.
+  bytes body = 6;
 }
 
-// Response is the Search Native response metadata in the same profile format.
+// HttpResponse is the Search Native response metadata.
 // HTTP status is preserved independently of the NativeEnd transport evidence.
-message Response {
+message HttpResponse {
   // Original backend HTTP status code, including non-success responses.
   uint32 status_code = 1;
 

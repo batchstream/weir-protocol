@@ -24,13 +24,13 @@ func TestCanonicalRelativeResource(t *testing.T) {
 	}
 }
 
-func TestUnsupportedProgramRuntime(t *testing.T) {
-	program := &pb.ProgramTransform{Runtime: "unqualified", Source: []byte("return weir.keep()")}
-	programForm := &pb.Transform_Program{Program: program}
+func TestLuaRejectsPrecompiledBytecode(t *testing.T) {
+	program := &pb.LuaTransform{Source: []byte("\x1bLua")}
+	programForm := &pb.Transform_Lua{Lua: program}
 	transform := &pb.Transform{Form: programForm}
 	action := &pb.MutateRequest_AtomicTransform{AtomicTransform: transform}
 	mutation := &pb.MutateRequest{Resource: "db/c/s:a", Action: action}
-	if failure := validateMutationFields(mutation); failure == nil || failure.Code != pb.FailureCode_UNSUPPORTED {
+	if failure := validateMutationFields(mutation); failure == nil || failure.Code != pb.FailureCode_INVALID_ARGUMENT {
 		t.Fatal(failure)
 	}
 }
@@ -100,9 +100,8 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 }
 
 func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
-	descriptor := &pb.Document{ContentType: "application/opaque", Data: []byte("descriptor")}
-	open := &pb.NativeOpen{Resource: "records", Descriptor_: descriptor}
-	native := &pb.NativeRequest{Open: open, Body: make([]byte, 8<<20)}
+	body := &pb.NativeRequest_MongodbCommand{MongodbCommand: make([]byte, MaxNativeBodyBytes)}
+	native := &pb.NativeRequest{Resource: "records", Request: body}
 	operation := &pb.Command_Native{Native: native}
 	command := &pb.Command{Operation: operation}
 	request := &pb.ExecuteRequest{StoreName: "records", Index: 1, Command: command}
@@ -114,7 +113,7 @@ func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
 		t.Fatal("Native record ordinal accepted")
 	}
 	request.Index = 1
-	native.Body = make([]byte, MaxCommandBytes)
+	body.MongodbCommand = make([]byte, MaxNativeBodyBytes+1)
 	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("Native command envelope bytes ignored")
 	}

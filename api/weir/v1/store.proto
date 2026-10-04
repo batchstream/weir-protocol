@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package weir.v1;
 
+import "api/weir/search/v1/http.proto";
+
 option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 
 // StoreService discovers Store endpoints and executes requests on their owners.
@@ -82,13 +84,19 @@ message Command {
   }
 }
 
-// NativeRequest supplies the adapter's descriptor and complete input body.
+// NativeRequest selects one explicit backend operation with its complete input.
 message NativeRequest {
-  // Required resource and adapter-owned descriptor.
-  NativeOpen open = 1;
+  // Canonical database/collection or index path relative to the selected Store.
+  string resource = 1;
 
-  // Opaque request bytes interpreted according to open.body_content_type.
-  bytes body = 2;
+  // Exactly one backend request is required; it must match the Store's adapter.
+  oneof request {
+    // Nonempty BSON command document for the selected MongoDB database.
+    bytes mongodb_command = 2;
+
+    // Index-relative HTTP request for Elasticsearch or OpenSearch.
+    weir.search.v1.HttpRequest search_http = 3;
+  }
 }
 
 // Event is a per-record result, Scan document/end, or Native head/body/end event.
@@ -144,8 +152,9 @@ enum FailureCode {
   // The caller or configured backend identity lacks access.
   PERMISSION_DENIED = 3;
 
-  // A required target does not exist.
-  NOT_FOUND = 4;
+  // The required backend collection or index does not exist. A missing document
+  // is a successful ReadResult.missing or a mutation precondition failure.
+  TARGET_NOT_FOUND = 4;
 
   // The target does not satisfy an operation precondition.
   PRECONDITION_FAILED = 5;
@@ -183,7 +192,8 @@ enum MutationOutcome {
   // Execution established that the mutation was not applied.
   NOT_APPLIED = 2;
 
-  // Execution established that the mutation was applied.
+  // Execution established that the requested semantics were satisfied, including
+  // a successful no-op such as deleting a document that was already absent.
   APPLIED = 3;
 
   // Available evidence cannot establish whether the mutation was applied.
@@ -239,7 +249,7 @@ message MutateRequest {
     // Delete the resource.
     Empty delete = 5;
 
-    // Apply a program or backend expression atomically to the resource.
+    // Apply Lua source or a backend expression atomically to the resource.
     Transform atomic_transform = 6;
   }
 }
@@ -253,28 +263,51 @@ message MutationResult {
   Failure failure = 2;
 }
 
-// Transform selects the executable form of one atomic mutation.
+// Transform selects Lua or a native backend expression for one atomic mutation.
 message Transform {
   // Exactly one transform form is required.
   oneof form {
-    // Weir-hosted program operating on the current document.
-    ProgramTransform program = 1;
+    // Lua operating on the current document or typed missing value.
+    LuaTransform lua = 1;
 
     // Opaque expression interpreted and validated by the backend adapter.
     Document backend_expression = 2;
   }
 }
 
-// ProgramTransform supplies source code and optional input to the selected runtime.
-message ProgramTransform {
-  // Runtime profile; the current supported profile is lua.v1.
-  string runtime = 1;
-
+// LuaTransform supplies source code and optional input to Weir's Lua runtime.
+// A missing document is a typed missing value. Returning an object replaces or
+// creates it; returning nil or no value keeps it. Explicit replace/keep/delete/reject
+// actions provide the same atomic mutation semantics.
+message LuaTransform {
   // Nonempty UTF-8 source code; precompiled bytecode is not accepted.
-  bytes source = 2;
+  bytes source = 1;
 
   // Optional input document made available to the program.
-  Document input = 3;
+  Document input = 2;
+}
+
+// ProjectionMode selects one uniform field selection rule.
+enum ProjectionMode {
+  // Unset value; invalid in an explicit Projection.
+  PROJECTION_MODE_UNSPECIFIED = 0;
+
+  // Return only the selected fields.
+  INCLUDE = 1;
+
+  // Return all fields except the selected fields.
+  EXCLUDE = 2;
+}
+
+// Projection selects bounded, distinct dot-separated field paths. Duplicate
+// paths and overlapping ancestor/descendant paths are invalid.
+message Projection {
+  // Required INCLUDE or EXCLUDE mode; mixing modes within one request is invalid.
+  ProjectionMode mode = 1;
+
+  // 1-128 paths, at most 512 bytes each and 8 KiB encoded Projection total;
+  // no operators, wildcard segments, or empty segments.
+  repeated string fields = 2;
 }
 
 // ScanRequest reads one finite page from an adapter-owned ordered traversal.
@@ -282,14 +315,19 @@ message ScanRequest {
   // Canonical collection or index path relative to the selected Store.
   string resource = 1;
 
-  // Optional adapter-owned selection and projection settings.
-  Document selector = 2;
+  // Optional native MongoDB filter object (BSON) or Search query object (JSON),
+  // with at most 16 KiB of payload bytes.
+  // No outer filter/query/projection wrapper; absent means match all documents.
+  Document filter = 2;
+
+  // Optional explicit field selection. Absent returns complete documents.
+  Projection projection = 3;
 
   // Maximum documents in this page. Zero uses 128; the maximum is 256.
-  uint32 page_size = 3;
+  uint32 page_size = 4;
 
   // Opaque checkpoint from a completed page, reusable on a node serving this Store.
-  bytes continuation_token = 4;
+  bytes continuation_token = 5;
 }
 
 // ScanEnd closes one finite page. A successful page has exactly one of exhausted
@@ -324,22 +362,10 @@ enum NativeCompletion {
   RESPONSE_INCOMPLETE = 3;
 }
 
-// NativeOpen identifies one adapter-owned operation and its request body format.
-message NativeOpen {
-  // Canonical path relative to the selected Store.
-  string resource = 1;
-
-  // Required adapter-owned operation descriptor with an explicit profile MIME type.
-  Document descriptor = 2;
-
-  // MIME type of NativeRequest.body; empty is allowed for bodyless operations.
-  string body_content_type = 3;
-}
-
 // NativeHead describes the native response before any body chunks are delivered.
 message NativeHead {
-  // Optional adapter-owned response metadata in its descriptor profile.
-  Document metadata = 1;
+  // Typed backend HTTP response for Search; absent for MongoDB command responses.
+  weir.search.v1.HttpResponse http = 1;
 
   // MIME type of following body chunks; empty when no type was supplied.
   string body_content_type = 2;

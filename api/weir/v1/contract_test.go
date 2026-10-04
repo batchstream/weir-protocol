@@ -98,6 +98,41 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	assertFields(t, messages.ByName("Event"), events)
 }
 
+func TestExplicitNativeScanAndLuaContract(t *testing.T) {
+	messages := File_api_weir_v1_store_proto.Messages()
+	for _, name := range []protoreflect.Name{"NativeOpen", "ProgramTransform"} {
+		if messages.ByName(name) != nil {
+			t.Fatal("obsolete payload envelope remains public", name)
+		}
+	}
+	native := []fieldContract{
+		{name: "resource", kind: protoreflect.StringKind},
+		{name: "mongodb_command", kind: protoreflect.BytesKind},
+		{name: "search_http", kind: protoreflect.MessageKind, message: "weir.search.v1.HttpRequest"},
+	}
+	assertFields(t, messages.ByName("NativeRequest"), native)
+	head := []fieldContract{
+		{name: "http", kind: protoreflect.MessageKind, message: "weir.search.v1.HttpResponse"},
+		{name: "body_content_type", kind: protoreflect.StringKind},
+	}
+	assertFields(t, messages.ByName("NativeHead"), head)
+	scan := []fieldContract{
+		{name: "resource", kind: protoreflect.StringKind},
+		{name: "filter", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
+		{name: "projection", kind: protoreflect.MessageKind, message: "weir.v1.Projection"},
+		{name: "page_size", kind: protoreflect.Uint32Kind},
+		{name: "continuation_token", kind: protoreflect.BytesKind},
+	}
+	assertFields(t, messages.ByName("ScanRequest"), scan)
+	lua := []fieldContract{{name: "source", kind: protoreflect.BytesKind}, {name: "input", kind: protoreflect.MessageKind, message: "weir.v1.Document"}}
+	assertFields(t, messages.ByName("LuaTransform"), lua)
+	projection := []fieldContract{{name: "mode", kind: protoreflect.EnumKind}, {name: "fields", kind: protoreflect.StringKind, repeated: true}}
+	assertFields(t, messages.ByName("Projection"), projection)
+	if FailureCode(4).String() != "TARGET_NOT_FOUND" {
+		t.Fatal("missing backend target must have an explicit failure classification")
+	}
+}
+
 func TestIndexedExecutionWireEncoding(t *testing.T) {
 	scan := &ScanRequest{Resource: "x"}
 	operation := &Command_Scan{Scan: scan}

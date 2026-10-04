@@ -7,6 +7,7 @@
 package weirv1
 
 import (
+	v1 "github.com/batchstream/weir-protocol/api/weir/search/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -33,8 +34,9 @@ const (
 	FailureCode_UNAUTHENTICATED FailureCode = 2
 	// The caller or configured backend identity lacks access.
 	FailureCode_PERMISSION_DENIED FailureCode = 3
-	// A required target does not exist.
-	FailureCode_NOT_FOUND FailureCode = 4
+	// The required backend collection or index does not exist. A missing document
+	// is a successful ReadResult.missing or a mutation precondition failure.
+	FailureCode_TARGET_NOT_FOUND FailureCode = 4
 	// The target does not satisfy an operation precondition.
 	FailureCode_PRECONDITION_FAILED FailureCode = 5
 	// A conflicting concurrent operation prevented this operation.
@@ -60,7 +62,7 @@ var (
 		1:  "INVALID_ARGUMENT",
 		2:  "UNAUTHENTICATED",
 		3:  "PERMISSION_DENIED",
-		4:  "NOT_FOUND",
+		4:  "TARGET_NOT_FOUND",
 		5:  "PRECONDITION_FAILED",
 		6:  "CONFLICT",
 		7:  "UNSUPPORTED",
@@ -75,7 +77,7 @@ var (
 		"INVALID_ARGUMENT":         1,
 		"UNAUTHENTICATED":          2,
 		"PERMISSION_DENIED":        3,
-		"NOT_FOUND":                4,
+		"TARGET_NOT_FOUND":         4,
 		"PRECONDITION_FAILED":      5,
 		"CONFLICT":                 6,
 		"UNSUPPORTED":              7,
@@ -124,7 +126,8 @@ const (
 	MutationOutcome_NOT_STARTED MutationOutcome = 1
 	// Execution established that the mutation was not applied.
 	MutationOutcome_NOT_APPLIED MutationOutcome = 2
-	// Execution established that the mutation was applied.
+	// Execution established that the requested semantics were satisfied, including
+	// a successful no-op such as deleting a document that was already absent.
 	MutationOutcome_APPLIED MutationOutcome = 3
 	// Available evidence cannot establish whether the mutation was applied.
 	MutationOutcome_UNKNOWN MutationOutcome = 4
@@ -175,6 +178,59 @@ func (MutationOutcome) EnumDescriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{1}
 }
 
+// ProjectionMode selects one uniform field selection rule.
+type ProjectionMode int32
+
+const (
+	// Unset value; invalid in an explicit Projection.
+	ProjectionMode_PROJECTION_MODE_UNSPECIFIED ProjectionMode = 0
+	// Return only the selected fields.
+	ProjectionMode_INCLUDE ProjectionMode = 1
+	// Return all fields except the selected fields.
+	ProjectionMode_EXCLUDE ProjectionMode = 2
+)
+
+// Enum value maps for ProjectionMode.
+var (
+	ProjectionMode_name = map[int32]string{
+		0: "PROJECTION_MODE_UNSPECIFIED",
+		1: "INCLUDE",
+		2: "EXCLUDE",
+	}
+	ProjectionMode_value = map[string]int32{
+		"PROJECTION_MODE_UNSPECIFIED": 0,
+		"INCLUDE":                     1,
+		"EXCLUDE":                     2,
+	}
+)
+
+func (x ProjectionMode) Enum() *ProjectionMode {
+	p := new(ProjectionMode)
+	*p = x
+	return p
+}
+
+func (x ProjectionMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ProjectionMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_weir_v1_store_proto_enumTypes[2].Descriptor()
+}
+
+func (ProjectionMode) Type() protoreflect.EnumType {
+	return &file_api_weir_v1_store_proto_enumTypes[2]
+}
+
+func (x ProjectionMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ProjectionMode.Descriptor instead.
+func (ProjectionMode) EnumDescriptor() ([]byte, []int) {
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{2}
+}
+
 // NativeCompletion reports response transport evidence, never mutation outcomes.
 type NativeCompletion int32
 
@@ -216,11 +272,11 @@ func (x NativeCompletion) String() string {
 }
 
 func (NativeCompletion) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_weir_v1_store_proto_enumTypes[2].Descriptor()
+	return file_api_weir_v1_store_proto_enumTypes[3].Descriptor()
 }
 
 func (NativeCompletion) Type() protoreflect.EnumType {
-	return &file_api_weir_v1_store_proto_enumTypes[2]
+	return &file_api_weir_v1_store_proto_enumTypes[3]
 }
 
 func (x NativeCompletion) Number() protoreflect.EnumNumber {
@@ -229,7 +285,7 @@ func (x NativeCompletion) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use NativeCompletion.Descriptor instead.
 func (NativeCompletion) EnumDescriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{2}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{3}
 }
 
 // ResolveStoreRequest selects the Store whose owner endpoints are required.
@@ -584,13 +640,18 @@ func (*Command_Scan) isCommand_Operation() {}
 
 func (*Command_Native) isCommand_Operation() {}
 
-// NativeRequest supplies the adapter's descriptor and complete input body.
+// NativeRequest selects one explicit backend operation with its complete input.
 type NativeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Required resource and adapter-owned descriptor.
-	Open *NativeOpen `protobuf:"bytes,1,opt,name=open,proto3" json:"open,omitempty"`
-	// Opaque request bytes interpreted according to open.body_content_type.
-	Body          []byte `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
+	// Canonical database/collection or index path relative to the selected Store.
+	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
+	// Exactly one backend request is required; it must match the Store's adapter.
+	//
+	// Types that are valid to be assigned to Request:
+	//
+	//	*NativeRequest_MongodbCommand
+	//	*NativeRequest_SearchHttp
+	Request       isNativeRequest_Request `protobuf_oneof:"request"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -625,19 +686,55 @@ func (*NativeRequest) Descriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *NativeRequest) GetOpen() *NativeOpen {
+func (x *NativeRequest) GetResource() string {
 	if x != nil {
-		return x.Open
+		return x.Resource
+	}
+	return ""
+}
+
+func (x *NativeRequest) GetRequest() isNativeRequest_Request {
+	if x != nil {
+		return x.Request
 	}
 	return nil
 }
 
-func (x *NativeRequest) GetBody() []byte {
+func (x *NativeRequest) GetMongodbCommand() []byte {
 	if x != nil {
-		return x.Body
+		if x, ok := x.Request.(*NativeRequest_MongodbCommand); ok {
+			return x.MongodbCommand
+		}
 	}
 	return nil
 }
+
+func (x *NativeRequest) GetSearchHttp() *v1.HttpRequest {
+	if x != nil {
+		if x, ok := x.Request.(*NativeRequest_SearchHttp); ok {
+			return x.SearchHttp
+		}
+	}
+	return nil
+}
+
+type isNativeRequest_Request interface {
+	isNativeRequest_Request()
+}
+
+type NativeRequest_MongodbCommand struct {
+	// Nonempty BSON command document for the selected MongoDB database.
+	MongodbCommand []byte `protobuf:"bytes,2,opt,name=mongodb_command,json=mongodbCommand,proto3,oneof"`
+}
+
+type NativeRequest_SearchHttp struct {
+	// Index-relative HTTP request for Elasticsearch or OpenSearch.
+	SearchHttp *v1.HttpRequest `protobuf:"bytes,3,opt,name=search_http,json=searchHttp,proto3,oneof"`
+}
+
+func (*NativeRequest_MongodbCommand) isNativeRequest_Request() {}
+
+func (*NativeRequest_SearchHttp) isNativeRequest_Request() {}
 
 // Event is a per-record result, Scan document/end, or Native head/body/end event.
 type Event struct {
@@ -1241,7 +1338,7 @@ type MutateRequest_Delete struct {
 }
 
 type MutateRequest_AtomicTransform struct {
-	// Apply a program or backend expression atomically to the resource.
+	// Apply Lua source or a backend expression atomically to the resource.
 	AtomicTransform *Transform `protobuf:"bytes,6,opt,name=atomic_transform,json=atomicTransform,proto3,oneof"`
 }
 
@@ -1310,14 +1407,14 @@ func (x *MutationResult) GetFailure() *Failure {
 	return nil
 }
 
-// Transform selects the executable form of one atomic mutation.
+// Transform selects Lua or a native backend expression for one atomic mutation.
 type Transform struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Exactly one transform form is required.
 	//
 	// Types that are valid to be assigned to Form:
 	//
-	//	*Transform_Program
+	//	*Transform_Lua
 	//	*Transform_BackendExpression
 	Form          isTransform_Form `protobuf_oneof:"form"`
 	unknownFields protoimpl.UnknownFields
@@ -1361,10 +1458,10 @@ func (x *Transform) GetForm() isTransform_Form {
 	return nil
 }
 
-func (x *Transform) GetProgram() *ProgramTransform {
+func (x *Transform) GetLua() *LuaTransform {
 	if x != nil {
-		if x, ok := x.Form.(*Transform_Program); ok {
-			return x.Program
+		if x, ok := x.Form.(*Transform_Lua); ok {
+			return x.Lua
 		}
 	}
 	return nil
@@ -1383,9 +1480,9 @@ type isTransform_Form interface {
 	isTransform_Form()
 }
 
-type Transform_Program struct {
-	// Weir-hosted program operating on the current document.
-	Program *ProgramTransform `protobuf:"bytes,1,opt,name=program,proto3,oneof"`
+type Transform_Lua struct {
+	// Lua operating on the current document or typed missing value.
+	Lua *LuaTransform `protobuf:"bytes,1,opt,name=lua,proto3,oneof"`
 }
 
 type Transform_BackendExpression struct {
@@ -1393,37 +1490,38 @@ type Transform_BackendExpression struct {
 	BackendExpression *Document `protobuf:"bytes,2,opt,name=backend_expression,json=backendExpression,proto3,oneof"`
 }
 
-func (*Transform_Program) isTransform_Form() {}
+func (*Transform_Lua) isTransform_Form() {}
 
 func (*Transform_BackendExpression) isTransform_Form() {}
 
-// ProgramTransform supplies source code and optional input to the selected runtime.
-type ProgramTransform struct {
+// LuaTransform supplies source code and optional input to Weir's Lua runtime.
+// A missing document is a typed missing value. Returning an object replaces or
+// creates it; returning nil or no value keeps it. Explicit replace/keep/delete/reject
+// actions provide the same atomic mutation semantics.
+type LuaTransform struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Runtime profile; the current supported profile is lua.v1.
-	Runtime string `protobuf:"bytes,1,opt,name=runtime,proto3" json:"runtime,omitempty"`
 	// Nonempty UTF-8 source code; precompiled bytecode is not accepted.
-	Source []byte `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	Source []byte `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
 	// Optional input document made available to the program.
-	Input         *Document `protobuf:"bytes,3,opt,name=input,proto3" json:"input,omitempty"`
+	Input         *Document `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ProgramTransform) Reset() {
-	*x = ProgramTransform{}
+func (x *LuaTransform) Reset() {
+	*x = LuaTransform{}
 	mi := &file_api_weir_v1_store_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ProgramTransform) String() string {
+func (x *LuaTransform) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ProgramTransform) ProtoMessage() {}
+func (*LuaTransform) ProtoMessage() {}
 
-func (x *ProgramTransform) ProtoReflect() protoreflect.Message {
+func (x *LuaTransform) ProtoReflect() protoreflect.Message {
 	mi := &file_api_weir_v1_store_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1435,28 +1533,78 @@ func (x *ProgramTransform) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ProgramTransform.ProtoReflect.Descriptor instead.
-func (*ProgramTransform) Descriptor() ([]byte, []int) {
+// Deprecated: Use LuaTransform.ProtoReflect.Descriptor instead.
+func (*LuaTransform) Descriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *ProgramTransform) GetRuntime() string {
-	if x != nil {
-		return x.Runtime
-	}
-	return ""
-}
-
-func (x *ProgramTransform) GetSource() []byte {
+func (x *LuaTransform) GetSource() []byte {
 	if x != nil {
 		return x.Source
 	}
 	return nil
 }
 
-func (x *ProgramTransform) GetInput() *Document {
+func (x *LuaTransform) GetInput() *Document {
 	if x != nil {
 		return x.Input
+	}
+	return nil
+}
+
+// Projection selects bounded, distinct dot-separated field paths. Duplicate
+// paths and overlapping ancestor/descendant paths are invalid.
+type Projection struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Required INCLUDE or EXCLUDE mode; mixing modes within one request is invalid.
+	Mode ProjectionMode `protobuf:"varint,1,opt,name=mode,proto3,enum=weir.v1.ProjectionMode" json:"mode,omitempty"`
+	// 1-128 paths, at most 512 bytes each and 8 KiB encoded Projection total;
+	// no operators, wildcard segments, or empty segments.
+	Fields        []string `protobuf:"bytes,2,rep,name=fields,proto3" json:"fields,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Projection) Reset() {
+	*x = Projection{}
+	mi := &file_api_weir_v1_store_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Projection) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Projection) ProtoMessage() {}
+
+func (x *Projection) ProtoReflect() protoreflect.Message {
+	mi := &file_api_weir_v1_store_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Projection.ProtoReflect.Descriptor instead.
+func (*Projection) Descriptor() ([]byte, []int) {
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *Projection) GetMode() ProjectionMode {
+	if x != nil {
+		return x.Mode
+	}
+	return ProjectionMode_PROJECTION_MODE_UNSPECIFIED
+}
+
+func (x *Projection) GetFields() []string {
+	if x != nil {
+		return x.Fields
 	}
 	return nil
 }
@@ -1466,19 +1614,23 @@ type ScanRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Canonical collection or index path relative to the selected Store.
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Optional adapter-owned selection and projection settings.
-	Selector *Document `protobuf:"bytes,2,opt,name=selector,proto3" json:"selector,omitempty"`
+	// Optional native MongoDB filter object (BSON) or Search query object (JSON),
+	// with at most 16 KiB of payload bytes.
+	// No outer filter/query/projection wrapper; absent means match all documents.
+	Filter *Document `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	// Optional explicit field selection. Absent returns complete documents.
+	Projection *Projection `protobuf:"bytes,3,opt,name=projection,proto3" json:"projection,omitempty"`
 	// Maximum documents in this page. Zero uses 128; the maximum is 256.
-	PageSize uint32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageSize uint32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Opaque checkpoint from a completed page, reusable on a node serving this Store.
-	ContinuationToken []byte `protobuf:"bytes,4,opt,name=continuation_token,json=continuationToken,proto3" json:"continuation_token,omitempty"`
+	ContinuationToken []byte `protobuf:"bytes,5,opt,name=continuation_token,json=continuationToken,proto3" json:"continuation_token,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ScanRequest) Reset() {
 	*x = ScanRequest{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[16]
+	mi := &file_api_weir_v1_store_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1490,7 +1642,7 @@ func (x *ScanRequest) String() string {
 func (*ScanRequest) ProtoMessage() {}
 
 func (x *ScanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[16]
+	mi := &file_api_weir_v1_store_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1503,7 +1655,7 @@ func (x *ScanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScanRequest.ProtoReflect.Descriptor instead.
 func (*ScanRequest) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{16}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ScanRequest) GetResource() string {
@@ -1513,9 +1665,16 @@ func (x *ScanRequest) GetResource() string {
 	return ""
 }
 
-func (x *ScanRequest) GetSelector() *Document {
+func (x *ScanRequest) GetFilter() *Document {
 	if x != nil {
-		return x.Selector
+		return x.Filter
+	}
+	return nil
+}
+
+func (x *ScanRequest) GetProjection() *Projection {
+	if x != nil {
+		return x.Projection
 	}
 	return nil
 }
@@ -1553,7 +1712,7 @@ type ScanEnd struct {
 
 func (x *ScanEnd) Reset() {
 	*x = ScanEnd{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[17]
+	mi := &file_api_weir_v1_store_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1565,7 +1724,7 @@ func (x *ScanEnd) String() string {
 func (*ScanEnd) ProtoMessage() {}
 
 func (x *ScanEnd) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[17]
+	mi := &file_api_weir_v1_store_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1578,7 +1737,7 @@ func (x *ScanEnd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScanEnd.ProtoReflect.Descriptor instead.
 func (*ScanEnd) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{17}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ScanEnd) GetDocumentCount() uint64 {
@@ -1609,75 +1768,11 @@ func (x *ScanEnd) GetExhausted() bool {
 	return false
 }
 
-// NativeOpen identifies one adapter-owned operation and its request body format.
-type NativeOpen struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Canonical path relative to the selected Store.
-	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Required adapter-owned operation descriptor with an explicit profile MIME type.
-	Descriptor_ *Document `protobuf:"bytes,2,opt,name=descriptor,proto3" json:"descriptor,omitempty"`
-	// MIME type of NativeRequest.body; empty is allowed for bodyless operations.
-	BodyContentType string `protobuf:"bytes,3,opt,name=body_content_type,json=bodyContentType,proto3" json:"body_content_type,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *NativeOpen) Reset() {
-	*x = NativeOpen{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[18]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *NativeOpen) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*NativeOpen) ProtoMessage() {}
-
-func (x *NativeOpen) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[18]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use NativeOpen.ProtoReflect.Descriptor instead.
-func (*NativeOpen) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{18}
-}
-
-func (x *NativeOpen) GetResource() string {
-	if x != nil {
-		return x.Resource
-	}
-	return ""
-}
-
-func (x *NativeOpen) GetDescriptor_() *Document {
-	if x != nil {
-		return x.Descriptor_
-	}
-	return nil
-}
-
-func (x *NativeOpen) GetBodyContentType() string {
-	if x != nil {
-		return x.BodyContentType
-	}
-	return ""
-}
-
 // NativeHead describes the native response before any body chunks are delivered.
 type NativeHead struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Optional adapter-owned response metadata in its descriptor profile.
-	Metadata *Document `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	// Typed backend HTTP response for Search; absent for MongoDB command responses.
+	Http *v1.HttpResponse `protobuf:"bytes,1,opt,name=http,proto3" json:"http,omitempty"`
 	// MIME type of following body chunks; empty when no type was supplied.
 	BodyContentType string `protobuf:"bytes,2,opt,name=body_content_type,json=bodyContentType,proto3" json:"body_content_type,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -1714,9 +1809,9 @@ func (*NativeHead) Descriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *NativeHead) GetMetadata() *Document {
+func (x *NativeHead) GetHttp() *v1.HttpResponse {
 	if x != nil {
-		return x.Metadata
+		return x.Http
 	}
 	return nil
 }
@@ -1787,7 +1882,7 @@ var File_api_weir_v1_store_proto protoreflect.FileDescriptor
 
 const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\n" +
-	"\x17api/weir/v1/store.proto\x12\aweir.v1\"4\n" +
+	"\x17api/weir/v1/store.proto\x12\aweir.v1\x1a\x1dapi/weir/search/v1/http.proto\"4\n" +
 	"\x13ResolveStoreRequest\x12\x1d\n" +
 	"\n" +
 	"store_name\x18\x01 \x01(\tR\tstoreName\"u\n" +
@@ -1810,10 +1905,13 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\x06mutate\x18\x02 \x01(\v2\x16.weir.v1.MutateRequestH\x00R\x06mutate\x12*\n" +
 	"\x04scan\x18\x03 \x01(\v2\x14.weir.v1.ScanRequestH\x00R\x04scan\x120\n" +
 	"\x06native\x18\x04 \x01(\v2\x16.weir.v1.NativeRequestH\x00R\x06nativeB\v\n" +
-	"\toperation\"L\n" +
-	"\rNativeRequest\x12'\n" +
-	"\x04open\x18\x01 \x01(\v2\x13.weir.v1.NativeOpenR\x04open\x12\x12\n" +
-	"\x04body\x18\x02 \x01(\fR\x04body\"\xe4\x02\n" +
+	"\toperation\"\xa1\x01\n" +
+	"\rNativeRequest\x12\x1a\n" +
+	"\bresource\x18\x01 \x01(\tR\bresource\x12)\n" +
+	"\x0fmongodb_command\x18\x02 \x01(\fH\x00R\x0emongodbCommand\x12>\n" +
+	"\vsearch_http\x18\x03 \x01(\v2\x1b.weir.search.v1.HttpRequestH\x00R\n" +
+	"searchHttpB\t\n" +
+	"\arequest\"\xe4\x02\n" +
 	"\x05Event\x126\n" +
 	"\vread_result\x18\x01 \x01(\v2\x13.weir.v1.ReadResultH\x00R\n" +
 	"readResult\x12B\n" +
@@ -1850,47 +1948,46 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\x06action\"p\n" +
 	"\x0eMutationResult\x122\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2\x18.weir.v1.MutationOutcomeR\aoutcome\x12*\n" +
-	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure\"\x8e\x01\n" +
-	"\tTransform\x125\n" +
-	"\aprogram\x18\x01 \x01(\v2\x19.weir.v1.ProgramTransformH\x00R\aprogram\x12B\n" +
+	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure\"\x82\x01\n" +
+	"\tTransform\x12)\n" +
+	"\x03lua\x18\x01 \x01(\v2\x15.weir.v1.LuaTransformH\x00R\x03lua\x12B\n" +
 	"\x12backend_expression\x18\x02 \x01(\v2\x11.weir.v1.DocumentH\x00R\x11backendExpressionB\x06\n" +
-	"\x04form\"m\n" +
-	"\x10ProgramTransform\x12\x18\n" +
-	"\aruntime\x18\x01 \x01(\tR\aruntime\x12\x16\n" +
-	"\x06source\x18\x02 \x01(\fR\x06source\x12'\n" +
-	"\x05input\x18\x03 \x01(\v2\x11.weir.v1.DocumentR\x05input\"\xa4\x01\n" +
+	"\x04form\"O\n" +
+	"\fLuaTransform\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\fR\x06source\x12'\n" +
+	"\x05input\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\x05input\"Q\n" +
+	"\n" +
+	"Projection\x12+\n" +
+	"\x04mode\x18\x01 \x01(\x0e2\x17.weir.v1.ProjectionModeR\x04mode\x12\x16\n" +
+	"\x06fields\x18\x02 \x03(\tR\x06fields\"\xd5\x01\n" +
 	"\vScanRequest\x12\x1a\n" +
-	"\bresource\x18\x01 \x01(\tR\bresource\x12-\n" +
-	"\bselector\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\bselector\x12\x1b\n" +
-	"\tpage_size\x18\x03 \x01(\rR\bpageSize\x12-\n" +
-	"\x12continuation_token\x18\x04 \x01(\fR\x11continuationToken\"\xb2\x01\n" +
+	"\bresource\x18\x01 \x01(\tR\bresource\x12)\n" +
+	"\x06filter\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\x06filter\x123\n" +
+	"\n" +
+	"projection\x18\x03 \x01(\v2\x13.weir.v1.ProjectionR\n" +
+	"projection\x12\x1b\n" +
+	"\tpage_size\x18\x04 \x01(\rR\bpageSize\x12-\n" +
+	"\x12continuation_token\x18\x05 \x01(\fR\x11continuationToken\"\xb2\x01\n" +
 	"\aScanEnd\x12%\n" +
 	"\x0edocument_count\x18\x01 \x01(\x04R\rdocumentCount\x12*\n" +
 	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure\x126\n" +
 	"\x17next_continuation_token\x18\x03 \x01(\fR\x15nextContinuationToken\x12\x1c\n" +
-	"\texhausted\x18\x04 \x01(\bR\texhausted\"\x87\x01\n" +
+	"\texhausted\x18\x04 \x01(\bR\texhausted\"j\n" +
 	"\n" +
-	"NativeOpen\x12\x1a\n" +
-	"\bresource\x18\x01 \x01(\tR\bresource\x121\n" +
-	"\n" +
-	"descriptor\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\n" +
-	"descriptor\x12*\n" +
-	"\x11body_content_type\x18\x03 \x01(\tR\x0fbodyContentType\"g\n" +
-	"\n" +
-	"NativeHead\x12-\n" +
-	"\bmetadata\x18\x01 \x01(\v2\x11.weir.v1.DocumentR\bmetadata\x12*\n" +
+	"NativeHead\x120\n" +
+	"\x04http\x18\x01 \x01(\v2\x1c.weir.search.v1.HttpResponseR\x04http\x12*\n" +
 	"\x11body_content_type\x18\x02 \x01(\tR\x0fbodyContentType\"r\n" +
 	"\tNativeEnd\x129\n" +
 	"\n" +
 	"completion\x18\x01 \x01(\x0e2\x19.weir.v1.NativeCompletionR\n" +
 	"completion\x12*\n" +
-	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure*\x91\x02\n" +
+	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure*\x98\x02\n" +
 	"\vFailureCode\x12\x1c\n" +
 	"\x18FAILURE_CODE_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10INVALID_ARGUMENT\x10\x01\x12\x13\n" +
 	"\x0fUNAUTHENTICATED\x10\x02\x12\x15\n" +
-	"\x11PERMISSION_DENIED\x10\x03\x12\r\n" +
-	"\tNOT_FOUND\x10\x04\x12\x17\n" +
+	"\x11PERMISSION_DENIED\x10\x03\x12\x14\n" +
+	"\x10TARGET_NOT_FOUND\x10\x04\x12\x17\n" +
 	"\x13PRECONDITION_FAILED\x10\x05\x12\f\n" +
 	"\bCONFLICT\x10\x06\x12\x0f\n" +
 	"\vUNSUPPORTED\x10\a\x12\x16\n" +
@@ -1905,7 +2002,11 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\vNOT_STARTED\x10\x01\x12\x0f\n" +
 	"\vNOT_APPLIED\x10\x02\x12\v\n" +
 	"\aAPPLIED\x10\x03\x12\v\n" +
-	"\aUNKNOWN\x10\x04*}\n" +
+	"\aUNKNOWN\x10\x04*K\n" +
+	"\x0eProjectionMode\x12\x1f\n" +
+	"\x1bPROJECTION_MODE_UNSPECIFIED\x10\x00\x12\v\n" +
+	"\aINCLUDE\x10\x01\x12\v\n" +
+	"\aEXCLUDE\x10\x02*}\n" +
 	"\x10NativeCompletion\x12!\n" +
 	"\x1dNATIVE_COMPLETION_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12NATIVE_NOT_STARTED\x10\x01\x12\x15\n" +
@@ -1927,77 +2028,81 @@ func file_api_weir_v1_store_proto_rawDescGZIP() []byte {
 	return file_api_weir_v1_store_proto_rawDescData
 }
 
-var file_api_weir_v1_store_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_api_weir_v1_store_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_api_weir_v1_store_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_api_weir_v1_store_proto_goTypes = []any{
 	(FailureCode)(0),             // 0: weir.v1.FailureCode
 	(MutationOutcome)(0),         // 1: weir.v1.MutationOutcome
-	(NativeCompletion)(0),        // 2: weir.v1.NativeCompletion
-	(*ResolveStoreRequest)(nil),  // 3: weir.v1.ResolveStoreRequest
-	(*ResolveStoreResponse)(nil), // 4: weir.v1.ResolveStoreResponse
-	(*ExecuteRequest)(nil),       // 5: weir.v1.ExecuteRequest
-	(*ExecuteResponse)(nil),      // 6: weir.v1.ExecuteResponse
-	(*Command)(nil),              // 7: weir.v1.Command
-	(*NativeRequest)(nil),        // 8: weir.v1.NativeRequest
-	(*Event)(nil),                // 9: weir.v1.Event
-	(*Empty)(nil),                // 10: weir.v1.Empty
-	(*Document)(nil),             // 11: weir.v1.Document
-	(*Failure)(nil),              // 12: weir.v1.Failure
-	(*ReadRequest)(nil),          // 13: weir.v1.ReadRequest
-	(*ReadResult)(nil),           // 14: weir.v1.ReadResult
-	(*MutateRequest)(nil),        // 15: weir.v1.MutateRequest
-	(*MutationResult)(nil),       // 16: weir.v1.MutationResult
-	(*Transform)(nil),            // 17: weir.v1.Transform
-	(*ProgramTransform)(nil),     // 18: weir.v1.ProgramTransform
-	(*ScanRequest)(nil),          // 19: weir.v1.ScanRequest
-	(*ScanEnd)(nil),              // 20: weir.v1.ScanEnd
-	(*NativeOpen)(nil),           // 21: weir.v1.NativeOpen
-	(*NativeHead)(nil),           // 22: weir.v1.NativeHead
-	(*NativeEnd)(nil),            // 23: weir.v1.NativeEnd
+	(ProjectionMode)(0),          // 2: weir.v1.ProjectionMode
+	(NativeCompletion)(0),        // 3: weir.v1.NativeCompletion
+	(*ResolveStoreRequest)(nil),  // 4: weir.v1.ResolveStoreRequest
+	(*ResolveStoreResponse)(nil), // 5: weir.v1.ResolveStoreResponse
+	(*ExecuteRequest)(nil),       // 6: weir.v1.ExecuteRequest
+	(*ExecuteResponse)(nil),      // 7: weir.v1.ExecuteResponse
+	(*Command)(nil),              // 8: weir.v1.Command
+	(*NativeRequest)(nil),        // 9: weir.v1.NativeRequest
+	(*Event)(nil),                // 10: weir.v1.Event
+	(*Empty)(nil),                // 11: weir.v1.Empty
+	(*Document)(nil),             // 12: weir.v1.Document
+	(*Failure)(nil),              // 13: weir.v1.Failure
+	(*ReadRequest)(nil),          // 14: weir.v1.ReadRequest
+	(*ReadResult)(nil),           // 15: weir.v1.ReadResult
+	(*MutateRequest)(nil),        // 16: weir.v1.MutateRequest
+	(*MutationResult)(nil),       // 17: weir.v1.MutationResult
+	(*Transform)(nil),            // 18: weir.v1.Transform
+	(*LuaTransform)(nil),         // 19: weir.v1.LuaTransform
+	(*Projection)(nil),           // 20: weir.v1.Projection
+	(*ScanRequest)(nil),          // 21: weir.v1.ScanRequest
+	(*ScanEnd)(nil),              // 22: weir.v1.ScanEnd
+	(*NativeHead)(nil),           // 23: weir.v1.NativeHead
+	(*NativeEnd)(nil),            // 24: weir.v1.NativeEnd
+	(*v1.HttpRequest)(nil),       // 25: weir.search.v1.HttpRequest
+	(*v1.HttpResponse)(nil),      // 26: weir.search.v1.HttpResponse
 }
 var file_api_weir_v1_store_proto_depIdxs = []int32{
-	7,  // 0: weir.v1.ExecuteRequest.command:type_name -> weir.v1.Command
-	9,  // 1: weir.v1.ExecuteResponse.event:type_name -> weir.v1.Event
-	13, // 2: weir.v1.Command.read:type_name -> weir.v1.ReadRequest
-	15, // 3: weir.v1.Command.mutate:type_name -> weir.v1.MutateRequest
-	19, // 4: weir.v1.Command.scan:type_name -> weir.v1.ScanRequest
-	8,  // 5: weir.v1.Command.native:type_name -> weir.v1.NativeRequest
-	21, // 6: weir.v1.NativeRequest.open:type_name -> weir.v1.NativeOpen
-	14, // 7: weir.v1.Event.read_result:type_name -> weir.v1.ReadResult
-	16, // 8: weir.v1.Event.mutation_result:type_name -> weir.v1.MutationResult
-	11, // 9: weir.v1.Event.document:type_name -> weir.v1.Document
-	22, // 10: weir.v1.Event.head:type_name -> weir.v1.NativeHead
-	20, // 11: weir.v1.Event.scan_end:type_name -> weir.v1.ScanEnd
-	23, // 12: weir.v1.Event.native_end:type_name -> weir.v1.NativeEnd
+	8,  // 0: weir.v1.ExecuteRequest.command:type_name -> weir.v1.Command
+	10, // 1: weir.v1.ExecuteResponse.event:type_name -> weir.v1.Event
+	14, // 2: weir.v1.Command.read:type_name -> weir.v1.ReadRequest
+	16, // 3: weir.v1.Command.mutate:type_name -> weir.v1.MutateRequest
+	21, // 4: weir.v1.Command.scan:type_name -> weir.v1.ScanRequest
+	9,  // 5: weir.v1.Command.native:type_name -> weir.v1.NativeRequest
+	25, // 6: weir.v1.NativeRequest.search_http:type_name -> weir.search.v1.HttpRequest
+	15, // 7: weir.v1.Event.read_result:type_name -> weir.v1.ReadResult
+	17, // 8: weir.v1.Event.mutation_result:type_name -> weir.v1.MutationResult
+	12, // 9: weir.v1.Event.document:type_name -> weir.v1.Document
+	23, // 10: weir.v1.Event.head:type_name -> weir.v1.NativeHead
+	22, // 11: weir.v1.Event.scan_end:type_name -> weir.v1.ScanEnd
+	24, // 12: weir.v1.Event.native_end:type_name -> weir.v1.NativeEnd
 	0,  // 13: weir.v1.Failure.code:type_name -> weir.v1.FailureCode
-	11, // 14: weir.v1.ReadResult.document:type_name -> weir.v1.Document
-	10, // 15: weir.v1.ReadResult.missing:type_name -> weir.v1.Empty
-	12, // 16: weir.v1.ReadResult.failure:type_name -> weir.v1.Failure
-	11, // 17: weir.v1.MutateRequest.put:type_name -> weir.v1.Document
-	11, // 18: weir.v1.MutateRequest.create:type_name -> weir.v1.Document
-	11, // 19: weir.v1.MutateRequest.replace:type_name -> weir.v1.Document
-	10, // 20: weir.v1.MutateRequest.delete:type_name -> weir.v1.Empty
-	17, // 21: weir.v1.MutateRequest.atomic_transform:type_name -> weir.v1.Transform
+	12, // 14: weir.v1.ReadResult.document:type_name -> weir.v1.Document
+	11, // 15: weir.v1.ReadResult.missing:type_name -> weir.v1.Empty
+	13, // 16: weir.v1.ReadResult.failure:type_name -> weir.v1.Failure
+	12, // 17: weir.v1.MutateRequest.put:type_name -> weir.v1.Document
+	12, // 18: weir.v1.MutateRequest.create:type_name -> weir.v1.Document
+	12, // 19: weir.v1.MutateRequest.replace:type_name -> weir.v1.Document
+	11, // 20: weir.v1.MutateRequest.delete:type_name -> weir.v1.Empty
+	18, // 21: weir.v1.MutateRequest.atomic_transform:type_name -> weir.v1.Transform
 	1,  // 22: weir.v1.MutationResult.outcome:type_name -> weir.v1.MutationOutcome
-	12, // 23: weir.v1.MutationResult.failure:type_name -> weir.v1.Failure
-	18, // 24: weir.v1.Transform.program:type_name -> weir.v1.ProgramTransform
-	11, // 25: weir.v1.Transform.backend_expression:type_name -> weir.v1.Document
-	11, // 26: weir.v1.ProgramTransform.input:type_name -> weir.v1.Document
-	11, // 27: weir.v1.ScanRequest.selector:type_name -> weir.v1.Document
-	12, // 28: weir.v1.ScanEnd.failure:type_name -> weir.v1.Failure
-	11, // 29: weir.v1.NativeOpen.descriptor:type_name -> weir.v1.Document
-	11, // 30: weir.v1.NativeHead.metadata:type_name -> weir.v1.Document
-	2,  // 31: weir.v1.NativeEnd.completion:type_name -> weir.v1.NativeCompletion
-	12, // 32: weir.v1.NativeEnd.failure:type_name -> weir.v1.Failure
-	3,  // 33: weir.v1.StoreService.ResolveStore:input_type -> weir.v1.ResolveStoreRequest
-	5,  // 34: weir.v1.StoreService.Execute:input_type -> weir.v1.ExecuteRequest
-	4,  // 35: weir.v1.StoreService.ResolveStore:output_type -> weir.v1.ResolveStoreResponse
-	6,  // 36: weir.v1.StoreService.Execute:output_type -> weir.v1.ExecuteResponse
-	35, // [35:37] is the sub-list for method output_type
-	33, // [33:35] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	13, // 23: weir.v1.MutationResult.failure:type_name -> weir.v1.Failure
+	19, // 24: weir.v1.Transform.lua:type_name -> weir.v1.LuaTransform
+	12, // 25: weir.v1.Transform.backend_expression:type_name -> weir.v1.Document
+	12, // 26: weir.v1.LuaTransform.input:type_name -> weir.v1.Document
+	2,  // 27: weir.v1.Projection.mode:type_name -> weir.v1.ProjectionMode
+	12, // 28: weir.v1.ScanRequest.filter:type_name -> weir.v1.Document
+	20, // 29: weir.v1.ScanRequest.projection:type_name -> weir.v1.Projection
+	13, // 30: weir.v1.ScanEnd.failure:type_name -> weir.v1.Failure
+	26, // 31: weir.v1.NativeHead.http:type_name -> weir.search.v1.HttpResponse
+	3,  // 32: weir.v1.NativeEnd.completion:type_name -> weir.v1.NativeCompletion
+	13, // 33: weir.v1.NativeEnd.failure:type_name -> weir.v1.Failure
+	4,  // 34: weir.v1.StoreService.ResolveStore:input_type -> weir.v1.ResolveStoreRequest
+	6,  // 35: weir.v1.StoreService.Execute:input_type -> weir.v1.ExecuteRequest
+	5,  // 36: weir.v1.StoreService.ResolveStore:output_type -> weir.v1.ResolveStoreResponse
+	7,  // 37: weir.v1.StoreService.Execute:output_type -> weir.v1.ExecuteResponse
+	36, // [36:38] is the sub-list for method output_type
+	34, // [34:36] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_api_weir_v1_store_proto_init() }
@@ -2010,6 +2115,10 @@ func file_api_weir_v1_store_proto_init() {
 		(*Command_Mutate)(nil),
 		(*Command_Scan)(nil),
 		(*Command_Native)(nil),
+	}
+	file_api_weir_v1_store_proto_msgTypes[5].OneofWrappers = []any{
+		(*NativeRequest_MongodbCommand)(nil),
+		(*NativeRequest_SearchHttp)(nil),
 	}
 	file_api_weir_v1_store_proto_msgTypes[6].OneofWrappers = []any{
 		(*Event_ReadResult)(nil),
@@ -2033,7 +2142,7 @@ func file_api_weir_v1_store_proto_init() {
 		(*MutateRequest_AtomicTransform)(nil),
 	}
 	file_api_weir_v1_store_proto_msgTypes[14].OneofWrappers = []any{
-		(*Transform_Program)(nil),
+		(*Transform_Lua)(nil),
 		(*Transform_BackendExpression)(nil),
 	}
 	type x struct{}
@@ -2042,7 +2151,7 @@ func file_api_weir_v1_store_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(packageMarker).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_weir_v1_store_proto_rawDesc), len(file_api_weir_v1_store_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      4,
 			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
