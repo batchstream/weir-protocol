@@ -36,17 +36,17 @@ func FuzzResourceSegmentRoundTrip(f *testing.F) {
 			t.Skip()
 		}
 		encoded := EncodeSegment(input)
-		resource := "weir://records/" + encoded
+		resource := encoded
 		expected := input != "" && input != "." && input != ".." && utf8.ValidString(input) && len(resource) <= MaxURI
 		for _, value := range input {
 			expected = expected && !unicode.IsControl(value)
 		}
-		store, parts, err := ParseResource(resource)
+		parts, err := ParseRelativeResource(resource)
 		if (err == nil) != expected {
 			t.Fatalf("input %q expected valid=%v: %v", input, expected, err)
 		}
-		if expected && (store != "records" || len(parts) != 1 || parts[0] != input) {
-			t.Fatalf("segment changed: Store %q parts %q", store, parts)
+		if expected && (len(parts) != 1 || parts[0] != input) {
+			t.Fatalf("segment changed: parts %q", parts)
 		}
 		if strings.Contains(encoded, "/") {
 			t.Fatal("encoded segment contains a path separator")

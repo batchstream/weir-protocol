@@ -9,41 +9,35 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestCanonicalURI(t *testing.T) {
-	valid := []string{"weir://mongo", "weir://mongo/db/c/s:a%2Fb", "weir://a-b/a/s:%E4%B8%AD", "weir://m/a/i:-3"}
-	for _, s := range valid {
-		if _, _, err := ParseResource(s); err != nil {
-			t.Errorf("%s: %v", s, err)
+func TestCanonicalRelativeResource(t *testing.T) {
+	valid := []string{"db/c/s:a%2Fb", "a/s:%E4%B8%AD", "a/i:-3", "records"}
+	for _, resource := range valid {
+		if _, err := ParseRelativeResource(resource); err != nil {
+			t.Errorf("%s: %v", resource, err)
 		}
 	}
-	invalid := []string{"weir://mongo/", "WEIR://mongo", "weir://mongo:42/x", "weir://m/a//b", "weir://m/a/..", "weir://m/a/%61", "weir://m/a/%2f", "weir://m/a/%FF", "weir://m/a/%00", "weir://a--b/x", "weir://m/x?q=a", "weir://m/x#f", "weir://" + strings.Repeat("a", 64)}
-	for _, s := range invalid {
-		if _, _, err := ParseResource(s); err == nil {
-			t.Errorf("accepted %q", s)
+	invalid := []string{"", "/records", "records/", "weir://mongo/db/c/s:a", "a//b", "a/..", "a/%61", "a/%2f", "a/%FF", "a/%00", "x?q=a", "x#f", strings.Repeat("a", MaxURI+1)}
+	for _, resource := range invalid {
+		if _, err := ParseRelativeResource(resource); err == nil {
+			t.Errorf("accepted %q", resource)
 		}
 	}
 }
-func TestValidationAndUnsupported(t *testing.T) {
-	req := &pb.ReadRequest{Resource: "weir://other/db/c/s:a"}
-	v := &pb.Operation_Read{Read: req}
-	op := &pb.Operation{Operation: v}
-	if f := Validate(op, "mongo"); f == nil || f.Code != pb.FailureCode_INVALID_ARGUMENT {
-		t.Fatal(f)
-	}
+
+func TestUnsupportedProgramRuntime(t *testing.T) {
 	program := &pb.ProgramTransform{Runtime: "unqualified", Source: []byte("return weir.keep()")}
 	programForm := &pb.Transform_Program{Program: program}
 	transform := &pb.Transform{Form: programForm}
 	action := &pb.MutateRequest_AtomicTransform{AtomicTransform: transform}
-	m := &pb.MutateRequest{Resource: "weir://mongo/db/c/s:a", Action: action}
-	mv := &pb.Operation_Mutate{Mutate: m}
-	op.Operation = mv
-	if f := Validate(op, "mongo"); f == nil || f.Code != pb.FailureCode_UNSUPPORTED {
-		t.Fatal(f)
+	mutation := &pb.MutateRequest{Resource: "db/c/s:a", Action: action}
+	if failure := validateMutationFields(mutation); failure == nil || failure.Code != pb.FailureCode_UNSUPPORTED {
+		t.Fatal(failure)
 	}
 }
-func FuzzResource(f *testing.F) {
-	f.Add("weir://mongo/db/c/s:a%2Fb")
-	f.Fuzz(func(t *testing.T, s string) { _, _, _ = ParseResource(s) })
+
+func FuzzRelativeResource(f *testing.F) {
+	f.Add("db/c/s:a%2Fb")
+	f.Fuzz(func(t *testing.T, resource string) { _, _ = ParseRelativeResource(resource) })
 }
 
 func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
@@ -51,20 +45,18 @@ func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
 	form := &pb.Transform_BackendExpression{BackendExpression: doc}
 	transform := &pb.Transform{Form: form}
 	action := &pb.MutateRequest_AtomicTransform{AtomicTransform: transform}
-	mutation := &pb.MutateRequest{Resource: "weir://mongo/db/c/s:a", Action: action}
-	variant := &pb.Operation_Mutate{Mutate: mutation}
-	op := &pb.Operation{Operation: variant}
-	if f := Validate(op, "mongo"); f != nil {
+	mutation := &pb.MutateRequest{Resource: "db/c/s:a", Action: action}
+	if f := validateMutationFields(mutation); f != nil {
 		t.Fatal("Core interpreted opaque expression", f)
 	}
 	for _, raw := range [][]byte{nil, make([]byte, MaxExpression+1)} {
 		doc.Data = raw
-		if f := Validate(op, "mongo"); f.GetCode() != pb.FailureCode_INVALID_ARGUMENT {
+		if f := validateMutationFields(mutation); f.GetCode() != pb.FailureCode_INVALID_ARGUMENT {
 			t.Fatal(f)
 		}
 	}
 	transform.Form = nil
-	if f := Validate(op, "mongo"); f.GetCode() != pb.FailureCode_INVALID_ARGUMENT {
+	if f := validateMutationFields(mutation); f.GetCode() != pb.FailureCode_INVALID_ARGUMENT {
 		t.Fatal(f)
 	}
 }
@@ -72,7 +64,7 @@ func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
 func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 	scan := &pb.ScanRequest{Resource: "records", PageSize: 1}
 	variant := &pb.Command_Scan{Scan: scan}
-	command := &pb.Command{Version: 1, Operation: variant}
+	command := &pb.Command{Operation: variant}
 	request := &pb.ExecuteRequest{StoreName: "records", Command: command}
 	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal(err)
@@ -81,7 +73,6 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 		func(r *pb.ExecuteRequest) { r.StoreName = "bad/store" },
 		func(r *pb.ExecuteRequest) { r.Command = nil },
 		func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0x18, 1}) },
-		func(r *pb.ExecuteRequest) { r.Command.Version = 2 },
 		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "weir://records/data" },
 		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "/data" },
 		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "data/%6B" },
@@ -95,7 +86,7 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 	}
 	document := &pb.Document{MediaType: "application/octet-stream", Data: make([]byte, MaxDocument)}
 	value := &pb.Event_Document{Document: document}
-	event := &pb.Event{Version: 1, Value: value}
+	event := &pb.Event{Value: value}
 	response := &pb.ExecuteResponse{Event: event}
 	if err := ValidateExecuteResponse(response); err != nil {
 		t.Fatal(err)
@@ -109,7 +100,7 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 func TestEventValidationAndTypedEncoding(t *testing.T) {
 	document := &pb.Document{MediaType: "application/octet-stream", Data: make([]byte, MaxDocument)}
 	value := &pb.Event_Document{Document: document}
-	event := &pb.Event{Version: 1, Value: value}
+	event := &pb.Event{Value: value}
 	encoded, err := proto.Marshal(event)
 	if err != nil {
 		t.Fatal(err)
@@ -133,8 +124,8 @@ func TestEventValidationAndTypedEncoding(t *testing.T) {
 	incomplete := &pb.NativeEnd{Completion: pb.NativeCompletion_RESPONSE_INCOMPLETE}
 	incompleteValue := &pb.Event_NativeEnd{NativeEnd: incomplete}
 	invalid := []*pb.Event{
-		{Version: 1}, {Version: 1, Value: badDocumentValue}, {Version: 1, Value: badChunkValue},
-		{Version: 1, Value: badEndValue}, {Version: 1, Value: incompleteValue},
+		{}, {Value: badDocumentValue}, {Value: badChunkValue},
+		{Value: badEndValue}, {Value: incompleteValue},
 	}
 	for _, item := range invalid {
 		if err := ValidateEvent(item); err == nil {

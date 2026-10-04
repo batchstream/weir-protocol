@@ -14,7 +14,7 @@ func ValidateReadBatchRequest(request *pb.ReadBatchRequest) error {
 		return fmt.Errorf("Read requires a valid Store and nonempty requests within the batch byte bound")
 	}
 	for index, item := range request.Requests {
-		if item == nil || !validBatchResource(request.StoreName, item.Resource) {
+		if item == nil || !validRelativeResource(item.Resource) {
 			return fmt.Errorf("Read request %d requires a canonical relative resource", index)
 		}
 		if failure := validateReadFields(item); failure != nil {
@@ -29,7 +29,7 @@ func ValidateMutateBatchRequest(request *pb.MutateBatchRequest) error {
 		return fmt.Errorf("Mutate requires a valid Store and nonempty requests within the batch byte bound")
 	}
 	for index, item := range request.Requests {
-		if item == nil || !validBatchResource(request.StoreName, item.Resource) {
+		if item == nil || !validRelativeResource(item.Resource) {
 			return fmt.Errorf("Mutate request %d requires a canonical relative resource", index)
 		}
 		if failure := validateMutationFields(item); failure != nil {
@@ -92,9 +92,4 @@ func ValidateMutationResult(result *pb.MutationResult) error {
 		return fmt.Errorf("unapplied mutation requires a failure")
 	}
 	return nil
-}
-
-func validBatchResource(store, resource string) bool {
-	// The normalized Store URI must also fit MaxURI.
-	return len(resource) <= MaxURI-len("weir://")-len(store)-1 && validRelativeResource(resource)
 }

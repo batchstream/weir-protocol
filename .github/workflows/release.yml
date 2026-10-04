@@ -6,7 +6,6 @@ on:
       version:
         description: Stable semantic version
         required: true
-        default: v0.2.0
         type: string
 
 permissions:

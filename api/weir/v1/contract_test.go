@@ -89,19 +89,6 @@ func TestPublicStoreContract(t *testing.T) {
 	assertFields(t, read.Output(), readResponse)
 	assertFields(t, mutate.Input(), mutationRequest)
 	assertFields(t, mutate.Output(), mutationResponse)
-	if resolve.Output().Fields().ByName("group") != nil || resolve.Output().Fields().ByName("replica_group") != nil {
-		t.Fatal("peer replica group leaked into public response")
-	}
-	for _, name := range []protoreflect.Name{"Weir", "Directory"} {
-		if file.Services().ByName(name) != nil {
-			t.Fatal("retired service remains public", name)
-		}
-	}
-	for _, name := range []protoreflect.Name{"Call", "NativeCall", "NodeAnnouncement", "NodeAdvertisement", "SyncDirectoryRequest", "SyncDirectoryResponse", "ExchangeRequest", "ExchangeResponse", "ResolveRequest", "ResolveResponse", "RouteRequest", "RouteResponse"} {
-		if file.Messages().ByName(name) != nil {
-			t.Fatal("internal or retired message remains public", name)
-		}
-	}
 }
 
 func TestPublicCommandContract(t *testing.T) {
@@ -112,9 +99,8 @@ func TestPublicCommandContract(t *testing.T) {
 		t.Fatal("business command messages missing")
 	}
 	fields := []fieldContract{
-		{name: "version", kind: protoreflect.Uint32Kind, number: 1},
-		{name: "scan", kind: protoreflect.MessageKind, number: 12, message: "weir.v1.ScanRequest"},
-		{name: "native", kind: protoreflect.MessageKind, number: 13, message: "weir.v1.NativeRequest"},
+		{name: "scan", kind: protoreflect.MessageKind, number: 1, message: "weir.v1.ScanRequest"},
+		{name: "native", kind: protoreflect.MessageKind, number: 2, message: "weir.v1.NativeRequest"},
 	}
 	assertFields(t, command, fields)
 	if command.Oneofs().Len() != 1 || command.Oneofs().Get(0).Name() != "operation" || command.Oneofs().Get(0).Fields().Len() != 2 {
@@ -124,15 +110,42 @@ func TestPublicCommandContract(t *testing.T) {
 	assertFields(t, native, nativeFields)
 }
 
+func TestPublicMessagesUseDenseCurrentFields(t *testing.T) {
+	file := File_api_weir_v1_store_proto
+	expected := []protoreflect.Name{
+		"ResolveStoreRequest", "ResolveStoreResponse", "ReadBatchRequest", "ReadBatchResponse",
+		"MutateBatchRequest", "MutateBatchResponse", "ExecuteRequest", "ExecuteResponse",
+		"Command", "NativeRequest", "Event", "Empty", "Document", "Failure", "ReadRequest",
+		"ReadResult", "MutateRequest", "MutationResult", "Transform", "ProgramTransform",
+		"ScanRequest", "ScanEnd", "NativeOpen", "NativeHead", "NativeEnd",
+	}
+	messages := file.Messages()
+	if messages.Len() != len(expected) {
+		t.Fatalf("public message count is %d, want %d", messages.Len(), len(expected))
+	}
+	for _, name := range expected {
+		message := messages.ByName(name)
+		if message == nil || message.ReservedNames().Len() != 0 || message.ReservedRanges().Len() != 0 {
+			t.Fatal("unexpected public message definition", name)
+		}
+		for index := 0; index < message.Fields().Len(); index++ {
+			field := message.Fields().Get(index)
+			if field.Number() != protoreflect.FieldNumber(index+1) {
+				t.Fatalf("%s field %s has number %d, want %d", name, field.Name(), field.Number(), index+1)
+			}
+		}
+	}
+}
+
 func TestPublicCommandWireEncoding(t *testing.T) {
 	scan := &ScanRequest{Resource: "x"}
 	scanOperation := &Command_Scan{Scan: scan}
-	command := &Command{Version: 1, Operation: scanOperation}
+	command := &Command{Operation: scanOperation}
 	payload, err := proto.Marshal(command)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPayload := []byte{0x08, 0x01, 0x62, 0x03, 0x0a, 0x01, 'x'}
+	wantPayload := []byte{0x0a, 0x03, 0x0a, 0x01, 'x'}
 	if !bytes.Equal(payload, wantPayload) {
 		t.Fatal("command wire changed", payload)
 	}
@@ -141,7 +154,7 @@ func TestPublicCommandWireEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRequest := []byte{0x0a, 0x07, 'r', 'e', 'c', 'o', 'r', 'd', 's', 0x12, 0x07, 0x08, 0x01, 0x62, 0x03, 0x0a, 0x01, 'x'}
+	wantRequest := []byte{0x0a, 0x07, 'r', 'e', 'c', 'o', 'r', 'd', 's', 0x12, 0x05, 0x0a, 0x03, 0x0a, 0x01, 'x'}
 	if !bytes.Equal(encoded, wantRequest) {
 		t.Fatal("typed execution wire changed", encoded)
 	}
@@ -153,7 +166,7 @@ func TestPublicCommandWireEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantNative := []byte{0x08, 0x01, 0x6a, 0x08, 0x0a, 0x03, 0x0a, 0x01, 'x', 0x12, 0x01, 0x01}
+	wantNative := []byte{0x12, 0x08, 0x0a, 0x03, 0x0a, 0x01, 'x', 0x12, 0x01, 0x01}
 	if !bytes.Equal(encoded, wantNative) {
 		t.Fatal("native request field numbers or encoding changed", encoded)
 	}

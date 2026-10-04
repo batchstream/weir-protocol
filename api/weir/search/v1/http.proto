@@ -1,7 +1,41 @@
 syntax = "proto3";
+
 package weir.search.v1;
+
 option go_package = "github.com/batchstream/weir-protocol/api/weir/search/v1;searchv1";
-// Adapter-owned profile: application/vnd.weir.search-http.v1+protobuf.
-message Header { string name = 1; repeated string values = 2; }
-message Request { string method = 1; string path = 2; string query = 3; repeated Header headers = 4; }
-message Response { uint32 status_code = 1; repeated Header headers = 2; }
+
+// Header preserves one HTTP header name and its ordered values.
+message Header {
+  // Lowercase HTTP header name; the Search adapter validates allowed request names.
+  string name = 1;
+
+  // Values associated with this header, without folding them into one string.
+  repeated string values = 2;
+}
+
+// Request is the Search Native descriptor encoded with the profile media type
+// application/vnd.weir.search-http.v1+protobuf. The selected Store resource names
+// the concrete index; the adapter adds that index before this relative HTTP path.
+message Request {
+  // HTTP method supported by the adapter for this operation.
+  string method = 1;
+
+  // Index-relative HTTP path beginning with '/', such as /_bulk or /_doc/id.
+  string path = 2;
+
+  // Canonically encoded query string without a leading '?'.
+  string query = 3;
+
+  // Optional request headers allowed by the Search adapter.
+  repeated Header headers = 4;
+}
+
+// Response is the Search Native response metadata in the same profile format.
+// HTTP status is preserved independently of the NativeEnd transport evidence.
+message Response {
+  // Original backend HTTP status code, including non-success responses.
+  uint32 status_code = 1;
+
+  // Backend response headers that can be represented by the Native adapter.
+  repeated Header headers = 2;
+}

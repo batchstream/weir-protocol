@@ -27,20 +27,21 @@ func ScanPageSize(request *pb.ScanRequest) uint64 {
 // Continuations carry bounded native backend state. The checksum detects
 // corruption, not authorization; Store access control still governs every Command.
 type scanContinuation struct {
-	Version     uint8  `json:"version"`
 	Backend     string `json:"backend"`
 	Fingerprint string `json:"fingerprint"`
 	State       []byte `json:"state"`
 	Checksum    string `json:"checksum"`
 }
 
-func ScanFingerprint(request *pb.ScanRequest, backend string) string {
+// ScanFingerprint binds traversal settings to the Store and backend profile.
+// Page size and continuation tokens do not change the traversal identity.
+func ScanFingerprint(request *pb.ScanRequest, store, backend string) string {
 	copy := proto.Clone(request).(*pb.ScanRequest)
 	copy.PageSize = 0
 	copy.ContinuationToken = nil
 	options := proto.MarshalOptions{Deterministic: true}
 	raw, _ := options.Marshal(copy)
-	sum := sha256.Sum256(append([]byte(backend+"\x00"), raw...))
+	sum := sha256.Sum256(append([]byte(store+"\x00"+backend+"\x00"), raw...))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -48,7 +49,7 @@ func EncodeScanToken(backend, fingerprint string, state []byte) ([]byte, error) 
 	if len(state) == 0 || len(state) > MaxScanState {
 		return nil, errors.New("Scan continuation state exceeds bound")
 	}
-	value := scanContinuation{Version: 1, Backend: backend, Fingerprint: fingerprint, State: state}
+	value := scanContinuation{Backend: backend, Fingerprint: fingerprint, State: state}
 	raw, _ := json.Marshal(value)
 	sum := sha256.Sum256(raw)
 	value.Checksum = hex.EncodeToString(sum[:])
@@ -70,7 +71,7 @@ func DecodeScanToken(token []byte, backend, fingerprint string) ([]byte, error) 
 		return nil, errors.New("invalid Scan continuation")
 	}
 	canonical, _ := json.Marshal(value)
-	if !bytes.Equal(canonical, token) || value.Version != 1 || value.Backend != backend || value.Fingerprint != fingerprint || len(value.State) == 0 || len(value.State) > MaxScanState {
+	if !bytes.Equal(canonical, token) || value.Backend != backend || value.Fingerprint != fingerprint || len(value.State) == 0 || len(value.State) > MaxScanState {
 		return nil, errors.New("Scan continuation does not match request")
 	}
 	checksum := value.Checksum
