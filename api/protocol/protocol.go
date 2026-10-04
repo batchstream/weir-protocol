@@ -23,12 +23,9 @@ const (
 	MaxExecuteRequestBytes  = MaxCommandBytes + 128
 	MaxExecuteResponseBytes = MaxEvent + 64
 	MaxEvent                = MaxDocument + (8 << 10)
-	// Record frames are bounded independently of the logical call or stream.
-	MaxRecordFrameBytes = 5 << 20
-	MaxRecordFrameItems = 1024
-	MaxResourceBytes    = 4096
-	MaxExpression       = 16 << 10
-	MaxSelector         = 16 << 10
+	MaxResourceBytes        = 4096
+	MaxExpression           = 16 << 10
+	MaxSelector             = 16 << 10
 )
 
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9]){0,62}$`)
@@ -125,39 +122,44 @@ func Missing() *pb.ReadResult {
 	return r
 }
 
-func validateReadFields(read *pb.ReadRequest) *pb.Failure {
-	if read.ReadMediaType != "" && !validMedia(read.ReadMediaType) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid media type")
-	}
-	if read.AdapterOptions != nil && !validDocument(read.AdapterOptions, MaxDocument) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
-	}
-	return nil
-}
-
 func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
-	if mutation.AdapterOptions != nil && !validDocument(mutation.AdapterOptions, MaxDocument) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
-	}
 	var document *pb.Document
 	switch action := mutation.Action.(type) {
 	case *pb.MutateRequest_Put:
+		if action == nil {
+			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing action")
+		}
 		document = action.Put
 	case *pb.MutateRequest_Create:
+		if action == nil {
+			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing action")
+		}
 		document = action.Create
 	case *pb.MutateRequest_Replace:
+		if action == nil {
+			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing action")
+		}
 		document = action.Replace
 	case *pb.MutateRequest_Delete:
+		if action == nil {
+			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing action")
+		}
 		if action.Delete == nil {
 			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing delete")
 		}
 		return nil
 	case *pb.MutateRequest_AtomicTransform:
+		if action == nil {
+			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing action")
+		}
 		if action.AtomicTransform == nil || action.AtomicTransform.Form == nil {
 			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing transform")
 		}
 		switch transform := action.AtomicTransform.Form.(type) {
 		case *pb.Transform_Program:
+			if transform == nil {
+				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing transform")
+			}
 			program := transform.Program
 			if program == nil ||
 				program.Runtime == "" ||
@@ -176,6 +178,9 @@ func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
 			}
 			return nil
 		case *pb.Transform_BackendExpression:
+			if transform == nil {
+				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing transform")
+			}
 			if transform.BackendExpression == nil || len(transform.BackendExpression.Data) == 0 || len(transform.BackendExpression.Data) > MaxExpression {
 				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized backend expression")
 			}
@@ -201,13 +206,10 @@ func ValidateScan(req *pb.ScanRequest) *pb.Failure {
 	if !validRelativeResource(req.Resource) {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Scan relative resource")
 	}
-	if req.ReadMediaType != "" && !validMedia(req.ReadMediaType) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Scan media type")
-	}
 	if req.PageSize > MaxScanPageSize || len(req.ContinuationToken) > MaxScanToken {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "Scan page size or continuation exceeds bound")
 	}
-	if d := req.Selector; d != nil && (!validMedia(d.MediaType) || len(d.Data) > MaxSelector) {
+	if d := req.Selector; d != nil && (!validMedia(d.ContentType) || len(d.Data) > MaxSelector) {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid or oversized selector")
 	}
 	return nil
@@ -217,7 +219,7 @@ const NativeChunk = 64 << 10
 const NativeDescriptor = 64 << 10
 
 func ValidateNative(open *pb.NativeOpen) *pb.Failure {
-	if open == nil || proto.Size(open) > NativeDescriptor+MaxResourceBytes+256 || open.Descriptor_ == nil || len(open.Descriptor_.Data) > NativeDescriptor {
+	if open == nil || !validDocument(open.Descriptor_, NativeDescriptor) || open.BodyContentType != "" && !validMedia(open.BodyContentType) {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Native Open bounds")
 	}
 	if !validRelativeResource(open.Resource) {
@@ -235,8 +237,8 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 	return end
 }
 
-// ValidateExecuteRequest validates one bounded frame without retaining stream
-// state. Callers enforce a fixed Store/kind and consecutive indexes across frames.
+// ValidateExecuteRequest validates one bounded operation without retaining stream
+// state. Callers enforce a fixed Store/kind and consecutive indexes across requests.
 func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 	if req == nil || !ValidStoreName(req.StoreName) || req.Index == 0 {
 		return fmt.Errorf("invalid Execute request envelope")
@@ -247,21 +249,15 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 	if proto.Size(req) > MaxExecuteRequestBytes || hasUnknown(req.ProtoReflect()) {
 		return fmt.Errorf("invalid Execute request fields or byte bound")
 	}
-	var count int
-	switch operation := req.Command.Operation.(type) {
-	case *pb.Command_Read:
-		count = len(operation.Read.Requests)
-	case *pb.Command_Mutate:
-		count = len(operation.Mutate.Requests)
+	switch req.Command.Operation.(type) {
+	case *pb.Command_Read, *pb.Command_Mutate:
+		if req.Index == math.MaxUint64 {
+			return fmt.Errorf("record index overflows the next ordinal")
+		}
 	default:
 		if req.Index != 1 {
 			return fmt.Errorf("Scan and Native require index 1")
 		}
-		return nil
-	}
-	// The next frame's first index must also remain representable.
-	if req.Index > math.MaxUint64-uint64(count) {
-		return fmt.Errorf("record frame indexes overflow")
 	}
 	return nil
 }
@@ -286,7 +282,7 @@ func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
 	}
 }
 
-// ValidateCommand validates one typed frame, including all of its record fields.
+// ValidateCommand validates one typed operation and its fields.
 func ValidateCommand(command *pb.Command) error {
 	if err := validateCommand(command); err != nil {
 		return err
@@ -298,36 +294,28 @@ func ValidateCommand(command *pb.Command) error {
 }
 
 func validateCommand(command *pb.Command) error {
-	if command == nil || command.Operation == nil {
+	if command == nil || command.Operation == nil || proto.Size(command) > MaxCommandBytes {
 		return fmt.Errorf("invalid command fields or byte bound")
 	}
 	var failure *pb.Failure
 	switch operation := command.Operation.(type) {
 	case *pb.Command_Read:
-		if operation == nil || operation.Read == nil || len(operation.Read.Requests) == 0 || len(operation.Read.Requests) > MaxRecordFrameItems || proto.Size(command) > MaxRecordFrameBytes {
-			return fmt.Errorf("Read requires nonempty requests within frame bounds")
+		if operation == nil {
+			return fmt.Errorf("missing Read request")
 		}
-		for index, request := range operation.Read.Requests {
-			if err := validateReadRequest(request); err != nil {
-				return fmt.Errorf("Read request %d: %w", index, err)
-			}
-		}
+		return validateReadRequest(operation.Read)
 	case *pb.Command_Mutate:
-		if operation == nil || operation.Mutate == nil || len(operation.Mutate.Requests) == 0 || len(operation.Mutate.Requests) > MaxRecordFrameItems || proto.Size(command) > MaxRecordFrameBytes {
-			return fmt.Errorf("Mutate requires nonempty requests within frame bounds")
+		if operation == nil {
+			return fmt.Errorf("missing Mutate request")
 		}
-		for index, request := range operation.Mutate.Requests {
-			if err := validateMutationRequest(request); err != nil {
-				return fmt.Errorf("Mutate request %d: %w", index, err)
-			}
-		}
+		return validateMutationRequest(operation.Mutate)
 	case *pb.Command_Scan:
-		if operation == nil || proto.Size(command) > MaxCommandBytes {
+		if operation == nil {
 			return fmt.Errorf("missing Scan request")
 		}
 		failure = ValidateScan(operation.Scan)
 	case *pb.Command_Native:
-		if operation == nil || operation.Native == nil || proto.Size(command) > MaxCommandBytes {
+		if operation == nil || operation.Native == nil {
 			return fmt.Errorf("missing Native request")
 		}
 		failure = ValidateNative(operation.Native.Open)
@@ -415,17 +403,35 @@ func validateEvent(event *pb.Event) error {
 	valid := false
 	switch value := event.Value.(type) {
 	case *pb.Event_ReadResult:
+		if value == nil {
+			break
+		}
 		return validateReadResult(value.ReadResult)
 	case *pb.Event_MutationResult:
+		if value == nil {
+			break
+		}
 		return validateMutationResult(value.MutationResult)
 	case *pb.Event_Document:
+		if value == nil {
+			break
+		}
 		valid = validDocument(value.Document, MaxDocument)
 	case *pb.Event_Head:
+		if value == nil {
+			break
+		}
 		head := value.Head
-		valid = head != nil && (head.BodyMediaType == "" || validMedia(head.BodyMediaType)) && (head.Metadata == nil || validDocument(head.Metadata, NativeDescriptor))
+		valid = head != nil && (head.BodyContentType == "" || validMedia(head.BodyContentType)) && (head.Metadata == nil || validDocument(head.Metadata, NativeDescriptor))
 	case *pb.Event_Chunk:
+		if value == nil {
+			break
+		}
 		valid = len(value.Chunk) > 0 && len(value.Chunk) <= NativeChunk
 	case *pb.Event_ScanEnd:
+		if value == nil {
+			break
+		}
 		end := value.ScanEnd
 		if end != nil {
 			valid = validFailure(end.Failure) && len(end.NextContinuationToken) <= MaxScanToken
@@ -436,6 +442,9 @@ func validateEvent(event *pb.Event) error {
 			}
 		}
 	case *pb.Event_NativeEnd:
+		if value == nil {
+			break
+		}
 		end := value.NativeEnd
 		if end != nil {
 			valid = end.Completion >= pb.NativeCompletion_NATIVE_NOT_STARTED && end.Completion <= pb.NativeCompletion_RESPONSE_INCOMPLETE && validFailure(end.Failure)
@@ -456,5 +465,5 @@ func validFailure(failure *pb.Failure) bool {
 	return failure == nil || failure.Code >= pb.FailureCode_INVALID_ARGUMENT && failure.Code <= pb.FailureCode_INTERNAL && len(failure.Message) <= 1024 && utf8.ValidString(failure.Message)
 }
 func validDocument(document *pb.Document, limit int) bool {
-	return document != nil && validMedia(document.MediaType) && len(document.Data) <= limit
+	return document != nil && validMedia(document.ContentType) && len(document.Data) <= limit
 }

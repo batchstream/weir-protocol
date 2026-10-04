@@ -9,7 +9,7 @@ import (
 )
 
 func TestScanContinuationBindingAndBounds(t *testing.T) {
-	selector := &pb.Document{MediaType: "application/json", Data: []byte(`{"query":{"match_all":{}}}`)}
+	selector := &pb.Document{ContentType: "application/json", Data: []byte(`{"query":{"match_all":{}}}`)}
 	request := &pb.ScanRequest{Resource: "records", Selector: selector, PageSize: 2}
 	fingerprint := ScanFingerprint(request, "search", "search:elasticsearch")
 	state := []byte(`{"pit":"native","after":3}`)

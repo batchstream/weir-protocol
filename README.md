@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.4.0
+go get github.com/batchstream/weir-protocol@v0.5.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -23,27 +23,25 @@ The public schemas live in `api/weir/v1/store.proto` and
 generated types. Node-to-node peer schemas and execution DTOs belong to the
 Weir server repository.
 
-## Batch and streaming semantics
+## Streaming semantics
 
-Execute selects one Store and operation kind for its lifetime. Read and Mutate
-commands contain nonempty frames of at most 1024 records and 5 MiB of complete
-Command encoding. These are independent per-frame bounds; there is no item or
-byte bound on the total logical call. A 2 MiB document plus maximal adapter
-options or program input fits one record frame. The common Execute request bound
-is 9 MiB plus envelope space so Native can carry its complete bounded body.
+Execute selects one Store and operation kind for its lifetime. Each Read or Mutate
+request carries one record. Servers aggregate admitted records into database
+batches; clients send and consume incrementally without collecting a wire batch.
+There is no item or byte bound on the total call. Documents are bounded at 2 MiB;
+Native may carry one bounded body within the 9 MiB Command limit.
 
-Each frame is validated before that frame starts execution. Earlier frames may
-already have effects when a later frame fails validation. The first request index
-is 1; later frame indexes are consecutive first-record ordinals. Index arithmetic
-must leave the next frame ordinal representable. Every record produces one bounded
-ExecuteResponse with its ordinal and typed ReadResult or MutationResult, in input
-order. Servers and clients enforce Store/kind consistency and index sequences.
-Stateless protocol validators check each envelope, nested fields, and bounds;
-unknown fields are rejected once throughout each frame's message tree.
+Each request is validated before execution. Earlier requests may have effects
+when a later request fails validation. The first record index is 1; every later
+request advances it by one. UINT64_MAX is invalid. Every record produces one
+bounded ExecuteResponse with its ordinal and typed result, in input order.
+Servers and clients enforce Store/kind consistency and index sequences. Stateless
+validators check each envelope, nested fields, and bounds; unknown fields are
+rejected throughout the message tree.
 
 Read results distinguish missing documents and individual backend failures.
 Clients can consume results incrementally; SDK convenience collectors may retain
-results at the caller's request. A frame is not a whole-call result vector.
+results at the caller's request. Each response confirms one record.
 
 Store names and resource paths are separate fields. Resource paths are bounded
 at 4096 encoded bytes and use canonical percent-encoded segments without a scheme
@@ -51,7 +49,7 @@ or leading slash. `ParseRelativeResource` validates and decodes these paths;
 `EncodeSegment` constructs individual segments.
 
 A mutation stream is not a transaction. Mutations to the same resource execute in
-input order across frames, including after a failed item; different resources may
+input order across requests, including after a failed item; different resources may
 run in parallel. Ordering across streams follows the database semantics. An APPLIED result may also
 carry a subsequent acknowledgement failure; other outcomes require a Failure.
 An individually received MutationResult retains its application evidence if the
@@ -61,7 +59,8 @@ Clients must never automatically replay unacknowledged mutations.
 Scan and Native accept one Command at index 1, followed by client half-close, and
 emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
 ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained when
-a later RPC error occurs. Documents remain bounded at 2 MiB; streams preserve
+a later RPC error occurs. Document.content_type identifies the adapter-owned BSON, JSON, or profile format;
+read requests do not negotiate a different representation. Documents remain bounded at 2 MiB; streams preserve
 incremental consumption for Scan and Native responses. A Scan continuation is
 bound to its Store, backend profile, and traversal settings. Its checksum detects
 corruption only and provides no authentication or authorization. Requests still
@@ -118,7 +117,7 @@ project's named struct style in generated code. Regeneration is byte reproducibl
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.4.0
+gh workflow run release.yml --ref main -f version=v0.5.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete

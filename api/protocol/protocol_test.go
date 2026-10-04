@@ -41,7 +41,7 @@ func FuzzRelativeResource(f *testing.F) {
 }
 
 func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
-	doc := &pb.Document{MediaType: "application/unknown", Data: []byte("not BSON or JSON")}
+	doc := &pb.Document{ContentType: "application/unknown", Data: []byte("not BSON or JSON")}
 	form := &pb.Transform_BackendExpression{BackendExpression: doc}
 	transform := &pb.Transform{Form: form}
 	action := &pb.MutateRequest_AtomicTransform{AtomicTransform: transform}
@@ -86,7 +86,7 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 			t.Fatal("accepted invalid request", copied)
 		}
 	}
-	document := &pb.Document{MediaType: "application/octet-stream", Data: make([]byte, MaxDocument)}
+	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, MaxDocument)}
 	value := &pb.Event_Document{Document: document}
 	event := &pb.Event{Value: value}
 	response := &pb.ExecuteResponse{Index: 1, Event: event}
@@ -100,7 +100,7 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 }
 
 func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
-	descriptor := &pb.Document{MediaType: "application/opaque", Data: []byte("descriptor")}
+	descriptor := &pb.Document{ContentType: "application/opaque", Data: []byte("descriptor")}
 	open := &pb.NativeOpen{Resource: "records", Descriptor_: descriptor}
 	native := &pb.NativeRequest{Open: open, Body: make([]byte, 8<<20)}
 	operation := &pb.Command_Native{Native: native}
@@ -132,7 +132,7 @@ func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
 }
 
 func TestEventValidationAndTypedEncoding(t *testing.T) {
-	document := &pb.Document{MediaType: "application/octet-stream", Data: make([]byte, MaxDocument)}
+	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, MaxDocument)}
 	value := &pb.Event_Document{Document: document}
 	event := &pb.Event{Value: value}
 	encoded, err := proto.Marshal(event)
@@ -150,7 +150,7 @@ func TestEventValidationAndTypedEncoding(t *testing.T) {
 	if len(failure.Message) > 1024 || !utf8.ValidString(failure.Message) {
 		t.Fatal("failure envelope not bounded UTF8")
 	}
-	badDocument := &pb.Document{MediaType: "invalid"}
+	badDocument := &pb.Document{ContentType: "invalid"}
 	badDocumentValue := &pb.Event_Document{Document: badDocument}
 	badChunkValue := &pb.Event_Chunk{Chunk: make([]byte, NativeChunk+1)}
 	badEnd := &pb.NativeEnd{Completion: pb.NativeCompletion(99)}

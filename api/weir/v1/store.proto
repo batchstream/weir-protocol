@@ -10,15 +10,15 @@ service StoreService {
   // ResolveStore returns the current endpoints for one configured Store.
   rpc ResolveStore(ResolveStoreRequest) returns (ResolveStoreResponse);
 
-  // Execute accepts bounded frames and emits indexed results incrementally.
-  // A stream selects one Store and operation kind. Read and Mutate frames use
-  // consecutive one-based record indexes; each frame is validated before its
-  // execution, so earlier frames may have effects before a later frame fails.
-  // Mutations to the same resource preserve input order across frames, including
+  // Execute accepts bounded requests and emits indexed results incrementally.
+  // A stream selects one Store and operation kind. Each Read or Mutate request
+  // carries one record with a consecutive one-based index. It is validated
+  // before execution; earlier records may have effects before a later one fails.
+  // Mutations to the same resource preserve input order across requests, including
   // after item failures. Different resources may execute concurrently. A stream
   // is not a transaction; ordering across streams follows database semantics.
   // Never automatically replay mutations without individual application evidence.
-  // Scan and Native accept exactly one frame with index 1 followed by half-close.
+  // Scan and Native accept exactly one request with index 1 followed by half-close.
   // A Scan checkpoint is usable only after its terminal event and final gRPC OK.
   rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
 }
@@ -41,28 +41,13 @@ message ResolveStoreResponse {
   uint64 cache_ttl_ms = 3;
 }
 
-// ReadBatch contains one bounded frame of independently reported reads.
-message ReadBatch {
-  // Nonempty sequence of at most 1024 requests within a 5 MiB Command encoding.
-  // Resource paths are relative to ExecuteRequest.store_name.
-  repeated ReadRequest requests = 1;
-}
-
-// MutationBatch contains one bounded frame of independent mutations.
-message MutationBatch {
-  // Nonempty sequence of at most 1024 requests within a 5 MiB Command encoding.
-  // This bound applies to each frame, not to the total logical call or stream.
-  repeated MutateRequest requests = 1;
-}
-
-// ExecuteRequest binds one bounded input frame to its owning Store and indexes.
+// ExecuteRequest binds one bounded operation to its owning Store and index.
 message ExecuteRequest {
   // Store that owns all resources; must remain identical throughout the stream.
   string store_name = 1;
 
-  // One-based ordinal of the first record in this frame. The first frame starts
-  // at 1; each later frame starts immediately after the previous frame's records.
-  // Scan and Native always use 1. The last record's ordinal must not overflow.
+  // Consecutive one-based record ordinal. Each Read or Mutate request advances
+  // it by one. Scan and Native always use 1. UINT64_MAX is invalid.
   uint64 index = 2;
 
   // Required operation; its kind must remain identical throughout the stream.
@@ -79,15 +64,15 @@ message ExecuteResponse {
   Event event = 2;
 }
 
-// Command selects one bounded frame with incrementally delivered results.
+// Command selects one bounded operation with incrementally delivered results.
 message Command {
   // Exactly one operation is required.
   oneof operation {
-    // Read records and return one indexed ReadResult for every request.
-    ReadBatch read = 1;
+    // Read one resource and return its indexed ReadResult.
+    ReadRequest read = 1;
 
-    // Apply mutations and return one indexed MutationResult for every request.
-    MutationBatch mutate = 2;
+    // Mutate one resource and return its indexed MutationResult.
+    MutateRequest mutate = 2;
 
     // Read one bounded traversal page.
     ScanRequest scan = 3;
@@ -102,7 +87,7 @@ message NativeRequest {
   // Required resource and adapter-owned descriptor.
   NativeOpen open = 1;
 
-  // Opaque request bytes interpreted according to open.body_media_type.
+  // Opaque request bytes interpreted according to open.body_content_type.
   bytes body = 2;
 }
 
@@ -136,10 +121,10 @@ message Event {
 // Empty is an explicit marker for a missing document or a delete action.
 message Empty {}
 
-// Document binds opaque bytes to an explicit media type; adapters own their format.
+// Document binds opaque bytes to an explicit content type; adapters own their format.
 message Document {
   // Required MIME media type without parameters.
-  string media_type = 1;
+  string content_type = 1;
 
   // Payload bytes, bounded separately from the enclosing protobuf message.
   bytes data = 2;
@@ -218,12 +203,6 @@ message Failure {
 message ReadRequest {
   // Canonical path relative to the selected Store; no scheme or leading slash.
   string resource = 1;
-
-  // Desired output MIME type; empty selects the adapter's default.
-  string read_media_type = 2;
-
-  // Optional adapter-owned read settings in an explicit document format.
-  Document adapter_options = 3;
 }
 
 // ReadResult distinguishes a returned document, absence, and an execution failure.
@@ -246,25 +225,22 @@ message MutateRequest {
   // Canonical path relative to the selected Store; no scheme or leading slash.
   string resource = 1;
 
-  // Optional adapter-owned mutation settings in an explicit document format.
-  Document adapter_options = 2;
-
   // Exactly one mutation action is required.
   oneof action {
     // Create or replace the resource with this document.
-    Document put = 3;
+    Document put = 2;
 
     // Create the resource only when it does not already exist.
-    Document create = 4;
+    Document create = 3;
 
     // Replace an existing resource with this document.
-    Document replace = 5;
+    Document replace = 4;
 
     // Delete the resource.
-    Empty delete = 6;
+    Empty delete = 5;
 
     // Apply a program or backend expression atomically to the resource.
-    Transform atomic_transform = 7;
+    Transform atomic_transform = 6;
   }
 }
 
@@ -309,14 +285,11 @@ message ScanRequest {
   // Optional adapter-owned selection and projection settings.
   Document selector = 2;
 
-  // Desired document MIME type; empty selects the adapter's default.
-  string read_media_type = 3;
-
   // Maximum documents in this page. Zero uses 128; the maximum is 256.
-  uint32 page_size = 4;
+  uint32 page_size = 3;
 
   // Opaque checkpoint from a completed page, reusable on a node serving this Store.
-  bytes continuation_token = 5;
+  bytes continuation_token = 4;
 }
 
 // ScanEnd closes one finite page. A successful page has exactly one of exhausted
@@ -360,7 +333,7 @@ message NativeOpen {
   Document descriptor = 2;
 
   // MIME type of NativeRequest.body; empty is allowed for bodyless operations.
-  string body_media_type = 3;
+  string body_content_type = 3;
 }
 
 // NativeHead describes the native response before any body chunks are delivered.
@@ -369,7 +342,7 @@ message NativeHead {
   Document metadata = 1;
 
   // MIME type of following body chunks; empty when no type was supplied.
-  string body_media_type = 2;
+  string body_content_type = 2;
 }
 
 // NativeEnd closes the response transport and reports any incomplete exchange.

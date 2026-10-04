@@ -8,35 +8,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestBatchReadFieldPolicy(t *testing.T) {
-	validOptions := &pb.Document{MediaType: "application/opaque", Data: []byte("uninterpreted")}
-	invalidOptions := &pb.Document{MediaType: "INVALID", Data: []byte("uninterpreted")}
-	oversizedOptions := &pb.Document{MediaType: "application/opaque", Data: make([]byte, MaxDocument+1)}
-	tests := []struct {
-		name  string
-		read  *pb.ReadRequest
-		valid bool
-	}{
-		{name: "default", read: &pb.ReadRequest{Resource: "data/s:key"}, valid: true},
-		{name: "opaque options", read: &pb.ReadRequest{Resource: "data/s:key", ReadMediaType: "application/opaque", AdapterOptions: validOptions}, valid: true},
-		{name: "invalid read media", read: &pb.ReadRequest{Resource: "data/s:key", ReadMediaType: "INVALID"}},
-		{name: "invalid options media", read: &pb.ReadRequest{Resource: "data/s:key", AdapterOptions: invalidOptions}},
-		{name: "oversized options", read: &pb.ReadRequest{Resource: "data/s:key", AdapterOptions: oversizedOptions}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			request := readFrame("records", 1, []*pb.ReadRequest{test.read})
-			if err := ValidateExecuteRequest(request); (err == nil) != test.valid {
-				t.Fatalf("valid=%v: %v", test.valid, err)
-			}
-		})
-	}
-}
-
-func TestBatchMutationFieldPolicy(t *testing.T) {
-	document := &pb.Document{MediaType: "application/opaque", Data: []byte("uninterpreted")}
-	invalidDocument := &pb.Document{MediaType: "INVALID"}
-	oversizedDocument := &pb.Document{MediaType: "application/opaque", Data: make([]byte, MaxDocument+1)}
+func TestMutationFieldPolicy(t *testing.T) {
+	document := &pb.Document{ContentType: "application/opaque", Data: []byte("uninterpreted")}
+	invalidDocument := &pb.Document{ContentType: "INVALID"}
+	oversizedDocument := &pb.Document{ContentType: "application/opaque", Data: make([]byte, MaxDocument+1)}
 	empty := &pb.Empty{}
 	put := &pb.MutateRequest_Put{Put: document}
 	create := &pb.MutateRequest_Create{Create: document}
@@ -65,7 +40,7 @@ func TestBatchMutationFieldPolicy(t *testing.T) {
 		{Resource: "data/s:key", Action: expressionAction},
 	}
 	for _, mutation := range valid {
-		request := mutationFrame("records", 1, []*pb.MutateRequest{mutation})
+		request := mutationExecution("records", 1, mutation)
 		if err := ValidateExecuteRequest(request); err != nil {
 			t.Fatalf("valid opaque mutation rejected: %v", err)
 		}
@@ -78,24 +53,22 @@ func TestBatchMutationFieldPolicy(t *testing.T) {
 		{Resource: "data/s:key", Action: oversizedPut},
 		{Resource: "data/s:key", Action: nilTransform},
 		{Resource: "data/s:key", Action: missingFormAction},
-		{Resource: "data/s:key", Action: put, AdapterOptions: invalidDocument},
-		{Resource: "data/s:key", Action: put, AdapterOptions: oversizedDocument},
 	}
 	for _, mutation := range invalid {
-		request := mutationFrame("records", 1, []*pb.MutateRequest{valid[0], mutation})
+		request := mutationExecution("records", 1, mutation)
 		if err := ValidateExecuteRequest(request); err == nil {
-			t.Fatal("invalid later mutation accepted", mutation)
+			t.Fatal("invalid mutation accepted", mutation)
 		}
 	}
 	for _, source := range [][]byte{nil, []byte(strings.Repeat("x", MaxExpression+1)), {0xff}, {'x', 0}, []byte("\x1bLua")} {
 		program.Source = source
-		request := mutationFrame("records", 1, []*pb.MutateRequest{valid[4]})
+		request := mutationExecution("records", 1, valid[4])
 		if err := ValidateExecuteRequest(request); err == nil {
 			t.Fatal("invalid program source accepted")
 		}
 	}
 	program.Source = []byte(strings.Repeat("x", MaxExpression))
-	request := mutationFrame("records", 1, []*pb.MutateRequest{valid[4]})
+	request := mutationExecution("records", 1, valid[4])
 	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal("program at the byte bound rejected", err)
 	}
@@ -110,7 +83,8 @@ func TestBatchMutationFieldPolicy(t *testing.T) {
 	}
 	for _, data := range [][]byte{nil, make([]byte, MaxExpression+1)} {
 		document.Data = data
-		request.Command.GetMutate().Requests = []*pb.MutateRequest{valid[5]}
+		operation := &pb.Command_Mutate{Mutate: valid[5]}
+		request.Command.Operation = operation
 		if err := ValidateExecuteRequest(request); err == nil {
 			t.Fatal("empty or oversized expression accepted")
 		}
@@ -118,7 +92,7 @@ func TestBatchMutationFieldPolicy(t *testing.T) {
 }
 
 func TestRecordResponsesRejectUnknownAtEveryNestedLevel(t *testing.T) {
-	document := &pb.Document{MediaType: "application/opaque", Data: []byte("uninterpreted")}
+	document := &pb.Document{ContentType: "application/opaque", Data: []byte("uninterpreted")}
 	read := ReadDocument(document)
 	response := readResponse(1, read)
 	for position := range 4 {
@@ -148,13 +122,13 @@ func TestRecordResponsesRejectUnknownAtEveryNestedLevel(t *testing.T) {
 	}
 }
 
-func TestBatchResourcesRespectRelativePathBound(t *testing.T) {
+func TestRecordResourcesRespectRelativePathBound(t *testing.T) {
 	for _, store := range []string{"a", "target", strings.Repeat("a", 63)} {
 		limit := MaxResourceBytes
 		for _, extra := range []int{0, 1} {
 			resource := strings.Repeat("x", limit+extra)
 			read := &pb.ReadRequest{Resource: resource}
-			request := readFrame(store, 1, []*pb.ReadRequest{read})
+			request := readExecution(store, 1, read)
 			if err := ValidateExecuteRequest(request); (err == nil) != (extra == 0) {
 				t.Fatalf("store length %d, resource length %d: %v", len(store), len(resource), err)
 			}
@@ -162,7 +136,7 @@ func TestBatchResourcesRespectRelativePathBound(t *testing.T) {
 	}
 }
 
-func FuzzBatchReadResource(f *testing.F) {
+func FuzzReadResource(f *testing.F) {
 	for _, resource := range []string{"data/s:key", "data/s:a%2Fb", "data/%E4%B8%AD", "data/%61", "data/%00", "/data", "data/", "weir://other/data"} {
 		f.Add("records", resource)
 	}
@@ -171,7 +145,7 @@ func FuzzBatchReadResource(f *testing.F) {
 		segments, resourceError := ParseRelativeResource(resource)
 		expected := ValidStoreName(store) && resourceError == nil && len(segments) != 0
 		read := &pb.ReadRequest{Resource: resource}
-		request := readFrame(store, 1, []*pb.ReadRequest{read})
+		request := readExecution(store, 1, read)
 		if err := ValidateExecuteRequest(request); (err == nil) != expected {
 			t.Fatalf("Store %q resource %q expected %v: %v", store, resource, expected, err)
 		}

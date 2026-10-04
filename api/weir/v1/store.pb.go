@@ -342,108 +342,13 @@ func (x *ResolveStoreResponse) GetCacheTtlMs() uint64 {
 	return 0
 }
 
-// ReadBatch contains one bounded frame of independently reported reads.
-type ReadBatch struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Nonempty sequence of at most 1024 requests within a 5 MiB Command encoding.
-	// Resource paths are relative to ExecuteRequest.store_name.
-	Requests      []*ReadRequest `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReadBatch) Reset() {
-	*x = ReadBatch{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReadBatch) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReadBatch) ProtoMessage() {}
-
-func (x *ReadBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReadBatch.ProtoReflect.Descriptor instead.
-func (*ReadBatch) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *ReadBatch) GetRequests() []*ReadRequest {
-	if x != nil {
-		return x.Requests
-	}
-	return nil
-}
-
-// MutationBatch contains one bounded frame of independent mutations.
-type MutationBatch struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Nonempty sequence of at most 1024 requests within a 5 MiB Command encoding.
-	// This bound applies to each frame, not to the total logical call or stream.
-	Requests      []*MutateRequest `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *MutationBatch) Reset() {
-	*x = MutationBatch{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *MutationBatch) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*MutationBatch) ProtoMessage() {}
-
-func (x *MutationBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use MutationBatch.ProtoReflect.Descriptor instead.
-func (*MutationBatch) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *MutationBatch) GetRequests() []*MutateRequest {
-	if x != nil {
-		return x.Requests
-	}
-	return nil
-}
-
-// ExecuteRequest binds one bounded input frame to its owning Store and indexes.
+// ExecuteRequest binds one bounded operation to its owning Store and index.
 type ExecuteRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Store that owns all resources; must remain identical throughout the stream.
 	StoreName string `protobuf:"bytes,1,opt,name=store_name,json=storeName,proto3" json:"store_name,omitempty"`
-	// One-based ordinal of the first record in this frame. The first frame starts
-	// at 1; each later frame starts immediately after the previous frame's records.
-	// Scan and Native always use 1. The last record's ordinal must not overflow.
+	// Consecutive one-based record ordinal. Each Read or Mutate request advances
+	// it by one. Scan and Native always use 1. UINT64_MAX is invalid.
 	Index uint64 `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
 	// Required operation; its kind must remain identical throughout the stream.
 	Command       *Command `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
@@ -453,7 +358,7 @@ type ExecuteRequest struct {
 
 func (x *ExecuteRequest) Reset() {
 	*x = ExecuteRequest{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[4]
+	mi := &file_api_weir_v1_store_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -465,7 +370,7 @@ func (x *ExecuteRequest) String() string {
 func (*ExecuteRequest) ProtoMessage() {}
 
 func (x *ExecuteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[4]
+	mi := &file_api_weir_v1_store_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -478,7 +383,7 @@ func (x *ExecuteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteRequest.ProtoReflect.Descriptor instead.
 func (*ExecuteRequest) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{4}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ExecuteRequest) GetStoreName() string {
@@ -516,7 +421,7 @@ type ExecuteResponse struct {
 
 func (x *ExecuteResponse) Reset() {
 	*x = ExecuteResponse{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[5]
+	mi := &file_api_weir_v1_store_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -528,7 +433,7 @@ func (x *ExecuteResponse) String() string {
 func (*ExecuteResponse) ProtoMessage() {}
 
 func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[5]
+	mi := &file_api_weir_v1_store_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -541,7 +446,7 @@ func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteResponse.ProtoReflect.Descriptor instead.
 func (*ExecuteResponse) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{5}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ExecuteResponse) GetIndex() uint64 {
@@ -558,7 +463,7 @@ func (x *ExecuteResponse) GetEvent() *Event {
 	return nil
 }
 
-// Command selects one bounded frame with incrementally delivered results.
+// Command selects one bounded operation with incrementally delivered results.
 type Command struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Exactly one operation is required.
@@ -576,7 +481,7 @@ type Command struct {
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[6]
+	mi := &file_api_weir_v1_store_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -588,7 +493,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[6]
+	mi := &file_api_weir_v1_store_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -601,7 +506,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{6}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Command) GetOperation() isCommand_Operation {
@@ -611,7 +516,7 @@ func (x *Command) GetOperation() isCommand_Operation {
 	return nil
 }
 
-func (x *Command) GetRead() *ReadBatch {
+func (x *Command) GetRead() *ReadRequest {
 	if x != nil {
 		if x, ok := x.Operation.(*Command_Read); ok {
 			return x.Read
@@ -620,7 +525,7 @@ func (x *Command) GetRead() *ReadBatch {
 	return nil
 }
 
-func (x *Command) GetMutate() *MutationBatch {
+func (x *Command) GetMutate() *MutateRequest {
 	if x != nil {
 		if x, ok := x.Operation.(*Command_Mutate); ok {
 			return x.Mutate
@@ -652,13 +557,13 @@ type isCommand_Operation interface {
 }
 
 type Command_Read struct {
-	// Read records and return one indexed ReadResult for every request.
-	Read *ReadBatch `protobuf:"bytes,1,opt,name=read,proto3,oneof"`
+	// Read one resource and return its indexed ReadResult.
+	Read *ReadRequest `protobuf:"bytes,1,opt,name=read,proto3,oneof"`
 }
 
 type Command_Mutate struct {
-	// Apply mutations and return one indexed MutationResult for every request.
-	Mutate *MutationBatch `protobuf:"bytes,2,opt,name=mutate,proto3,oneof"`
+	// Mutate one resource and return its indexed MutationResult.
+	Mutate *MutateRequest `protobuf:"bytes,2,opt,name=mutate,proto3,oneof"`
 }
 
 type Command_Scan struct {
@@ -684,7 +589,7 @@ type NativeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Required resource and adapter-owned descriptor.
 	Open *NativeOpen `protobuf:"bytes,1,opt,name=open,proto3" json:"open,omitempty"`
-	// Opaque request bytes interpreted according to open.body_media_type.
+	// Opaque request bytes interpreted according to open.body_content_type.
 	Body          []byte `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -692,7 +597,7 @@ type NativeRequest struct {
 
 func (x *NativeRequest) Reset() {
 	*x = NativeRequest{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[7]
+	mi := &file_api_weir_v1_store_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -704,7 +609,7 @@ func (x *NativeRequest) String() string {
 func (*NativeRequest) ProtoMessage() {}
 
 func (x *NativeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[7]
+	mi := &file_api_weir_v1_store_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -717,7 +622,7 @@ func (x *NativeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NativeRequest.ProtoReflect.Descriptor instead.
 func (*NativeRequest) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{7}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *NativeRequest) GetOpen() *NativeOpen {
@@ -755,7 +660,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[8]
+	mi := &file_api_weir_v1_store_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -767,7 +672,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[8]
+	mi := &file_api_weir_v1_store_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -780,7 +685,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{8}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Event) GetValue() isEvent_Value {
@@ -915,7 +820,7 @@ type Empty struct {
 
 func (x *Empty) Reset() {
 	*x = Empty{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[9]
+	mi := &file_api_weir_v1_store_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -927,7 +832,7 @@ func (x *Empty) String() string {
 func (*Empty) ProtoMessage() {}
 
 func (x *Empty) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[9]
+	mi := &file_api_weir_v1_store_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -940,14 +845,14 @@ func (x *Empty) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Empty.ProtoReflect.Descriptor instead.
 func (*Empty) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{9}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{7}
 }
 
-// Document binds opaque bytes to an explicit media type; adapters own their format.
+// Document binds opaque bytes to an explicit content type; adapters own their format.
 type Document struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Required MIME media type without parameters.
-	MediaType string `protobuf:"bytes,1,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	ContentType string `protobuf:"bytes,1,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
 	// Payload bytes, bounded separately from the enclosing protobuf message.
 	Data          []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -956,7 +861,7 @@ type Document struct {
 
 func (x *Document) Reset() {
 	*x = Document{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[10]
+	mi := &file_api_weir_v1_store_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -968,7 +873,7 @@ func (x *Document) String() string {
 func (*Document) ProtoMessage() {}
 
 func (x *Document) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[10]
+	mi := &file_api_weir_v1_store_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -981,12 +886,12 @@ func (x *Document) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Document.ProtoReflect.Descriptor instead.
 func (*Document) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{10}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *Document) GetMediaType() string {
+func (x *Document) GetContentType() string {
 	if x != nil {
-		return x.MediaType
+		return x.ContentType
 	}
 	return ""
 }
@@ -1011,7 +916,7 @@ type Failure struct {
 
 func (x *Failure) Reset() {
 	*x = Failure{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[11]
+	mi := &file_api_weir_v1_store_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1023,7 +928,7 @@ func (x *Failure) String() string {
 func (*Failure) ProtoMessage() {}
 
 func (x *Failure) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[11]
+	mi := &file_api_weir_v1_store_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1036,7 +941,7 @@ func (x *Failure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Failure.ProtoReflect.Descriptor instead.
 func (*Failure) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{11}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Failure) GetCode() FailureCode {
@@ -1057,18 +962,14 @@ func (x *Failure) GetMessage() string {
 type ReadRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Canonical path relative to the selected Store; no scheme or leading slash.
-	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Desired output MIME type; empty selects the adapter's default.
-	ReadMediaType string `protobuf:"bytes,2,opt,name=read_media_type,json=readMediaType,proto3" json:"read_media_type,omitempty"`
-	// Optional adapter-owned read settings in an explicit document format.
-	AdapterOptions *Document `protobuf:"bytes,3,opt,name=adapter_options,json=adapterOptions,proto3" json:"adapter_options,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	Resource      string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ReadRequest) Reset() {
 	*x = ReadRequest{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[12]
+	mi := &file_api_weir_v1_store_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1080,7 +981,7 @@ func (x *ReadRequest) String() string {
 func (*ReadRequest) ProtoMessage() {}
 
 func (x *ReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[12]
+	mi := &file_api_weir_v1_store_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1093,7 +994,7 @@ func (x *ReadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadRequest.ProtoReflect.Descriptor instead.
 func (*ReadRequest) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{12}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ReadRequest) GetResource() string {
@@ -1101,20 +1002,6 @@ func (x *ReadRequest) GetResource() string {
 		return x.Resource
 	}
 	return ""
-}
-
-func (x *ReadRequest) GetReadMediaType() string {
-	if x != nil {
-		return x.ReadMediaType
-	}
-	return ""
-}
-
-func (x *ReadRequest) GetAdapterOptions() *Document {
-	if x != nil {
-		return x.AdapterOptions
-	}
-	return nil
 }
 
 // ReadResult distinguishes a returned document, absence, and an execution failure.
@@ -1134,7 +1021,7 @@ type ReadResult struct {
 
 func (x *ReadResult) Reset() {
 	*x = ReadResult{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[13]
+	mi := &file_api_weir_v1_store_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1146,7 +1033,7 @@ func (x *ReadResult) String() string {
 func (*ReadResult) ProtoMessage() {}
 
 func (x *ReadResult) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[13]
+	mi := &file_api_weir_v1_store_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1159,7 +1046,7 @@ func (x *ReadResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadResult.ProtoReflect.Descriptor instead.
 func (*ReadResult) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{13}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ReadResult) GetResult() isReadResult_Result {
@@ -1226,8 +1113,6 @@ type MutateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Canonical path relative to the selected Store; no scheme or leading slash.
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Optional adapter-owned mutation settings in an explicit document format.
-	AdapterOptions *Document `protobuf:"bytes,2,opt,name=adapter_options,json=adapterOptions,proto3" json:"adapter_options,omitempty"`
 	// Exactly one mutation action is required.
 	//
 	// Types that are valid to be assigned to Action:
@@ -1244,7 +1129,7 @@ type MutateRequest struct {
 
 func (x *MutateRequest) Reset() {
 	*x = MutateRequest{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[14]
+	mi := &file_api_weir_v1_store_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1256,7 +1141,7 @@ func (x *MutateRequest) String() string {
 func (*MutateRequest) ProtoMessage() {}
 
 func (x *MutateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[14]
+	mi := &file_api_weir_v1_store_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1269,7 +1154,7 @@ func (x *MutateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MutateRequest.ProtoReflect.Descriptor instead.
 func (*MutateRequest) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{14}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *MutateRequest) GetResource() string {
@@ -1277,13 +1162,6 @@ func (x *MutateRequest) GetResource() string {
 		return x.Resource
 	}
 	return ""
-}
-
-func (x *MutateRequest) GetAdapterOptions() *Document {
-	if x != nil {
-		return x.AdapterOptions
-	}
-	return nil
 }
 
 func (x *MutateRequest) GetAction() isMutateRequest_Action {
@@ -1344,27 +1222,27 @@ type isMutateRequest_Action interface {
 
 type MutateRequest_Put struct {
 	// Create or replace the resource with this document.
-	Put *Document `protobuf:"bytes,3,opt,name=put,proto3,oneof"`
+	Put *Document `protobuf:"bytes,2,opt,name=put,proto3,oneof"`
 }
 
 type MutateRequest_Create struct {
 	// Create the resource only when it does not already exist.
-	Create *Document `protobuf:"bytes,4,opt,name=create,proto3,oneof"`
+	Create *Document `protobuf:"bytes,3,opt,name=create,proto3,oneof"`
 }
 
 type MutateRequest_Replace struct {
 	// Replace an existing resource with this document.
-	Replace *Document `protobuf:"bytes,5,opt,name=replace,proto3,oneof"`
+	Replace *Document `protobuf:"bytes,4,opt,name=replace,proto3,oneof"`
 }
 
 type MutateRequest_Delete struct {
 	// Delete the resource.
-	Delete *Empty `protobuf:"bytes,6,opt,name=delete,proto3,oneof"`
+	Delete *Empty `protobuf:"bytes,5,opt,name=delete,proto3,oneof"`
 }
 
 type MutateRequest_AtomicTransform struct {
 	// Apply a program or backend expression atomically to the resource.
-	AtomicTransform *Transform `protobuf:"bytes,7,opt,name=atomic_transform,json=atomicTransform,proto3,oneof"`
+	AtomicTransform *Transform `protobuf:"bytes,6,opt,name=atomic_transform,json=atomicTransform,proto3,oneof"`
 }
 
 func (*MutateRequest_Put) isMutateRequest_Action() {}
@@ -1390,7 +1268,7 @@ type MutationResult struct {
 
 func (x *MutationResult) Reset() {
 	*x = MutationResult{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[15]
+	mi := &file_api_weir_v1_store_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1402,7 +1280,7 @@ func (x *MutationResult) String() string {
 func (*MutationResult) ProtoMessage() {}
 
 func (x *MutationResult) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[15]
+	mi := &file_api_weir_v1_store_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1415,7 +1293,7 @@ func (x *MutationResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MutationResult.ProtoReflect.Descriptor instead.
 func (*MutationResult) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{15}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *MutationResult) GetOutcome() MutationOutcome {
@@ -1448,7 +1326,7 @@ type Transform struct {
 
 func (x *Transform) Reset() {
 	*x = Transform{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[16]
+	mi := &file_api_weir_v1_store_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1460,7 +1338,7 @@ func (x *Transform) String() string {
 func (*Transform) ProtoMessage() {}
 
 func (x *Transform) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[16]
+	mi := &file_api_weir_v1_store_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1473,7 +1351,7 @@ func (x *Transform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Transform.ProtoReflect.Descriptor instead.
 func (*Transform) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{16}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Transform) GetForm() isTransform_Form {
@@ -1534,7 +1412,7 @@ type ProgramTransform struct {
 
 func (x *ProgramTransform) Reset() {
 	*x = ProgramTransform{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[17]
+	mi := &file_api_weir_v1_store_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1546,7 +1424,7 @@ func (x *ProgramTransform) String() string {
 func (*ProgramTransform) ProtoMessage() {}
 
 func (x *ProgramTransform) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[17]
+	mi := &file_api_weir_v1_store_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1559,7 +1437,7 @@ func (x *ProgramTransform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgramTransform.ProtoReflect.Descriptor instead.
 func (*ProgramTransform) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{17}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ProgramTransform) GetRuntime() string {
@@ -1590,19 +1468,17 @@ type ScanRequest struct {
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
 	// Optional adapter-owned selection and projection settings.
 	Selector *Document `protobuf:"bytes,2,opt,name=selector,proto3" json:"selector,omitempty"`
-	// Desired document MIME type; empty selects the adapter's default.
-	ReadMediaType string `protobuf:"bytes,3,opt,name=read_media_type,json=readMediaType,proto3" json:"read_media_type,omitempty"`
 	// Maximum documents in this page. Zero uses 128; the maximum is 256.
-	PageSize uint32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageSize uint32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Opaque checkpoint from a completed page, reusable on a node serving this Store.
-	ContinuationToken []byte `protobuf:"bytes,5,opt,name=continuation_token,json=continuationToken,proto3" json:"continuation_token,omitempty"`
+	ContinuationToken []byte `protobuf:"bytes,4,opt,name=continuation_token,json=continuationToken,proto3" json:"continuation_token,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ScanRequest) Reset() {
 	*x = ScanRequest{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[18]
+	mi := &file_api_weir_v1_store_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1614,7 +1490,7 @@ func (x *ScanRequest) String() string {
 func (*ScanRequest) ProtoMessage() {}
 
 func (x *ScanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[18]
+	mi := &file_api_weir_v1_store_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1627,7 +1503,7 @@ func (x *ScanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScanRequest.ProtoReflect.Descriptor instead.
 func (*ScanRequest) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{18}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ScanRequest) GetResource() string {
@@ -1642,13 +1518,6 @@ func (x *ScanRequest) GetSelector() *Document {
 		return x.Selector
 	}
 	return nil
-}
-
-func (x *ScanRequest) GetReadMediaType() string {
-	if x != nil {
-		return x.ReadMediaType
-	}
-	return ""
 }
 
 func (x *ScanRequest) GetPageSize() uint32 {
@@ -1684,7 +1553,7 @@ type ScanEnd struct {
 
 func (x *ScanEnd) Reset() {
 	*x = ScanEnd{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[19]
+	mi := &file_api_weir_v1_store_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1696,7 +1565,7 @@ func (x *ScanEnd) String() string {
 func (*ScanEnd) ProtoMessage() {}
 
 func (x *ScanEnd) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[19]
+	mi := &file_api_weir_v1_store_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1709,7 +1578,7 @@ func (x *ScanEnd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScanEnd.ProtoReflect.Descriptor instead.
 func (*ScanEnd) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{19}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ScanEnd) GetDocumentCount() uint64 {
@@ -1748,14 +1617,14 @@ type NativeOpen struct {
 	// Required adapter-owned operation descriptor with an explicit profile MIME type.
 	Descriptor_ *Document `protobuf:"bytes,2,opt,name=descriptor,proto3" json:"descriptor,omitempty"`
 	// MIME type of NativeRequest.body; empty is allowed for bodyless operations.
-	BodyMediaType string `protobuf:"bytes,3,opt,name=body_media_type,json=bodyMediaType,proto3" json:"body_media_type,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	BodyContentType string `protobuf:"bytes,3,opt,name=body_content_type,json=bodyContentType,proto3" json:"body_content_type,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *NativeOpen) Reset() {
 	*x = NativeOpen{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[20]
+	mi := &file_api_weir_v1_store_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1767,7 +1636,7 @@ func (x *NativeOpen) String() string {
 func (*NativeOpen) ProtoMessage() {}
 
 func (x *NativeOpen) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[20]
+	mi := &file_api_weir_v1_store_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1780,7 +1649,7 @@ func (x *NativeOpen) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NativeOpen.ProtoReflect.Descriptor instead.
 func (*NativeOpen) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{20}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *NativeOpen) GetResource() string {
@@ -1797,9 +1666,9 @@ func (x *NativeOpen) GetDescriptor_() *Document {
 	return nil
 }
 
-func (x *NativeOpen) GetBodyMediaType() string {
+func (x *NativeOpen) GetBodyContentType() string {
 	if x != nil {
-		return x.BodyMediaType
+		return x.BodyContentType
 	}
 	return ""
 }
@@ -1810,14 +1679,14 @@ type NativeHead struct {
 	// Optional adapter-owned response metadata in its descriptor profile.
 	Metadata *Document `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	// MIME type of following body chunks; empty when no type was supplied.
-	BodyMediaType string `protobuf:"bytes,2,opt,name=body_media_type,json=bodyMediaType,proto3" json:"body_media_type,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	BodyContentType string `protobuf:"bytes,2,opt,name=body_content_type,json=bodyContentType,proto3" json:"body_content_type,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *NativeHead) Reset() {
 	*x = NativeHead{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[21]
+	mi := &file_api_weir_v1_store_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1829,7 +1698,7 @@ func (x *NativeHead) String() string {
 func (*NativeHead) ProtoMessage() {}
 
 func (x *NativeHead) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[21]
+	mi := &file_api_weir_v1_store_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1842,7 +1711,7 @@ func (x *NativeHead) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NativeHead.ProtoReflect.Descriptor instead.
 func (*NativeHead) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{21}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *NativeHead) GetMetadata() *Document {
@@ -1852,9 +1721,9 @@ func (x *NativeHead) GetMetadata() *Document {
 	return nil
 }
 
-func (x *NativeHead) GetBodyMediaType() string {
+func (x *NativeHead) GetBodyContentType() string {
 	if x != nil {
-		return x.BodyMediaType
+		return x.BodyContentType
 	}
 	return ""
 }
@@ -1872,7 +1741,7 @@ type NativeEnd struct {
 
 func (x *NativeEnd) Reset() {
 	*x = NativeEnd{}
-	mi := &file_api_weir_v1_store_proto_msgTypes[22]
+	mi := &file_api_weir_v1_store_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1884,7 +1753,7 @@ func (x *NativeEnd) String() string {
 func (*NativeEnd) ProtoMessage() {}
 
 func (x *NativeEnd) ProtoReflect() protoreflect.Message {
-	mi := &file_api_weir_v1_store_proto_msgTypes[22]
+	mi := &file_api_weir_v1_store_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1897,7 +1766,7 @@ func (x *NativeEnd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NativeEnd.ProtoReflect.Descriptor instead.
 func (*NativeEnd) Descriptor() ([]byte, []int) {
-	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{22}
+	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *NativeEnd) GetCompletion() NativeCompletion {
@@ -1927,11 +1796,7 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"store_name\x18\x01 \x01(\tR\tstoreName\x12\x1c\n" +
 	"\tendpoints\x18\x02 \x03(\tR\tendpoints\x12 \n" +
 	"\fcache_ttl_ms\x18\x03 \x01(\x04R\n" +
-	"cacheTtlMs\"=\n" +
-	"\tReadBatch\x120\n" +
-	"\brequests\x18\x01 \x03(\v2\x14.weir.v1.ReadRequestR\brequests\"C\n" +
-	"\rMutationBatch\x122\n" +
-	"\brequests\x18\x01 \x03(\v2\x16.weir.v1.MutateRequestR\brequests\"q\n" +
+	"cacheTtlMs\"q\n" +
 	"\x0eExecuteRequest\x12\x1d\n" +
 	"\n" +
 	"store_name\x18\x01 \x01(\tR\tstoreName\x12\x14\n" +
@@ -1939,10 +1804,10 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\acommand\x18\x03 \x01(\v2\x10.weir.v1.CommandR\acommand\"M\n" +
 	"\x0fExecuteResponse\x12\x14\n" +
 	"\x05index\x18\x01 \x01(\x04R\x05index\x12$\n" +
-	"\x05event\x18\x02 \x01(\v2\x0e.weir.v1.EventR\x05event\"\xd0\x01\n" +
-	"\aCommand\x12(\n" +
-	"\x04read\x18\x01 \x01(\v2\x12.weir.v1.ReadBatchH\x00R\x04read\x120\n" +
-	"\x06mutate\x18\x02 \x01(\v2\x16.weir.v1.MutationBatchH\x00R\x06mutate\x12*\n" +
+	"\x05event\x18\x02 \x01(\v2\x0e.weir.v1.EventR\x05event\"\xd2\x01\n" +
+	"\aCommand\x12*\n" +
+	"\x04read\x18\x01 \x01(\v2\x14.weir.v1.ReadRequestH\x00R\x04read\x120\n" +
+	"\x06mutate\x18\x02 \x01(\v2\x16.weir.v1.MutateRequestH\x00R\x06mutate\x12*\n" +
 	"\x04scan\x18\x03 \x01(\v2\x14.weir.v1.ScanRequestH\x00R\x04scan\x120\n" +
 	"\x06native\x18\x04 \x01(\v2\x16.weir.v1.NativeRequestH\x00R\x06nativeB\v\n" +
 	"\toperation\"L\n" +
@@ -1960,32 +1825,28 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\n" +
 	"native_end\x18\a \x01(\v2\x12.weir.v1.NativeEndH\x00R\tnativeEndB\a\n" +
 	"\x05value\"\a\n" +
-	"\x05Empty\"=\n" +
-	"\bDocument\x12\x1d\n" +
-	"\n" +
-	"media_type\x18\x01 \x01(\tR\tmediaType\x12\x12\n" +
+	"\x05Empty\"A\n" +
+	"\bDocument\x12!\n" +
+	"\fcontent_type\x18\x01 \x01(\tR\vcontentType\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\"M\n" +
 	"\aFailure\x12(\n" +
 	"\x04code\x18\x01 \x01(\x0e2\x14.weir.v1.FailureCodeR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x8d\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\")\n" +
 	"\vReadRequest\x12\x1a\n" +
-	"\bresource\x18\x01 \x01(\tR\bresource\x12&\n" +
-	"\x0fread_media_type\x18\x02 \x01(\tR\rreadMediaType\x12:\n" +
-	"\x0fadapter_options\x18\x03 \x01(\v2\x11.weir.v1.DocumentR\x0eadapterOptions\"\xa1\x01\n" +
+	"\bresource\x18\x01 \x01(\tR\bresource\"\xa1\x01\n" +
 	"\n" +
 	"ReadResult\x12/\n" +
 	"\bdocument\x18\x01 \x01(\v2\x11.weir.v1.DocumentH\x00R\bdocument\x12*\n" +
 	"\amissing\x18\x02 \x01(\v2\x0e.weir.v1.EmptyH\x00R\amissing\x12,\n" +
 	"\afailure\x18\x03 \x01(\v2\x10.weir.v1.FailureH\x00R\afailureB\b\n" +
-	"\x06result\"\xdf\x02\n" +
+	"\x06result\"\xa3\x02\n" +
 	"\rMutateRequest\x12\x1a\n" +
-	"\bresource\x18\x01 \x01(\tR\bresource\x12:\n" +
-	"\x0fadapter_options\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\x0eadapterOptions\x12%\n" +
-	"\x03put\x18\x03 \x01(\v2\x11.weir.v1.DocumentH\x00R\x03put\x12+\n" +
-	"\x06create\x18\x04 \x01(\v2\x11.weir.v1.DocumentH\x00R\x06create\x12-\n" +
-	"\areplace\x18\x05 \x01(\v2\x11.weir.v1.DocumentH\x00R\areplace\x12(\n" +
-	"\x06delete\x18\x06 \x01(\v2\x0e.weir.v1.EmptyH\x00R\x06delete\x12?\n" +
-	"\x10atomic_transform\x18\a \x01(\v2\x12.weir.v1.TransformH\x00R\x0fatomicTransformB\b\n" +
+	"\bresource\x18\x01 \x01(\tR\bresource\x12%\n" +
+	"\x03put\x18\x02 \x01(\v2\x11.weir.v1.DocumentH\x00R\x03put\x12+\n" +
+	"\x06create\x18\x03 \x01(\v2\x11.weir.v1.DocumentH\x00R\x06create\x12-\n" +
+	"\areplace\x18\x04 \x01(\v2\x11.weir.v1.DocumentH\x00R\areplace\x12(\n" +
+	"\x06delete\x18\x05 \x01(\v2\x0e.weir.v1.EmptyH\x00R\x06delete\x12?\n" +
+	"\x10atomic_transform\x18\x06 \x01(\v2\x12.weir.v1.TransformH\x00R\x0fatomicTransformB\b\n" +
 	"\x06action\"p\n" +
 	"\x0eMutationResult\x122\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2\x18.weir.v1.MutationOutcomeR\aoutcome\x12*\n" +
@@ -1997,29 +1858,28 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\x10ProgramTransform\x12\x18\n" +
 	"\aruntime\x18\x01 \x01(\tR\aruntime\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\fR\x06source\x12'\n" +
-	"\x05input\x18\x03 \x01(\v2\x11.weir.v1.DocumentR\x05input\"\xcc\x01\n" +
+	"\x05input\x18\x03 \x01(\v2\x11.weir.v1.DocumentR\x05input\"\xa4\x01\n" +
 	"\vScanRequest\x12\x1a\n" +
 	"\bresource\x18\x01 \x01(\tR\bresource\x12-\n" +
-	"\bselector\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\bselector\x12&\n" +
-	"\x0fread_media_type\x18\x03 \x01(\tR\rreadMediaType\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\rR\bpageSize\x12-\n" +
-	"\x12continuation_token\x18\x05 \x01(\fR\x11continuationToken\"\xb2\x01\n" +
+	"\bselector\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\bselector\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\rR\bpageSize\x12-\n" +
+	"\x12continuation_token\x18\x04 \x01(\fR\x11continuationToken\"\xb2\x01\n" +
 	"\aScanEnd\x12%\n" +
 	"\x0edocument_count\x18\x01 \x01(\x04R\rdocumentCount\x12*\n" +
 	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure\x126\n" +
 	"\x17next_continuation_token\x18\x03 \x01(\fR\x15nextContinuationToken\x12\x1c\n" +
-	"\texhausted\x18\x04 \x01(\bR\texhausted\"\x83\x01\n" +
+	"\texhausted\x18\x04 \x01(\bR\texhausted\"\x87\x01\n" +
 	"\n" +
 	"NativeOpen\x12\x1a\n" +
 	"\bresource\x18\x01 \x01(\tR\bresource\x121\n" +
 	"\n" +
 	"descriptor\x18\x02 \x01(\v2\x11.weir.v1.DocumentR\n" +
-	"descriptor\x12&\n" +
-	"\x0fbody_media_type\x18\x03 \x01(\tR\rbodyMediaType\"c\n" +
+	"descriptor\x12*\n" +
+	"\x11body_content_type\x18\x03 \x01(\tR\x0fbodyContentType\"g\n" +
 	"\n" +
 	"NativeHead\x12-\n" +
-	"\bmetadata\x18\x01 \x01(\v2\x11.weir.v1.DocumentR\bmetadata\x12&\n" +
-	"\x0fbody_media_type\x18\x02 \x01(\tR\rbodyMediaType\"r\n" +
+	"\bmetadata\x18\x01 \x01(\v2\x11.weir.v1.DocumentR\bmetadata\x12*\n" +
+	"\x11body_content_type\x18\x02 \x01(\tR\x0fbodyContentType\"r\n" +
 	"\tNativeEnd\x129\n" +
 	"\n" +
 	"completion\x18\x01 \x01(\x0e2\x19.weir.v1.NativeCompletionR\n" +
@@ -2068,82 +1928,76 @@ func file_api_weir_v1_store_proto_rawDescGZIP() []byte {
 }
 
 var file_api_weir_v1_store_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_api_weir_v1_store_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_api_weir_v1_store_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_api_weir_v1_store_proto_goTypes = []any{
 	(FailureCode)(0),             // 0: weir.v1.FailureCode
 	(MutationOutcome)(0),         // 1: weir.v1.MutationOutcome
 	(NativeCompletion)(0),        // 2: weir.v1.NativeCompletion
 	(*ResolveStoreRequest)(nil),  // 3: weir.v1.ResolveStoreRequest
 	(*ResolveStoreResponse)(nil), // 4: weir.v1.ResolveStoreResponse
-	(*ReadBatch)(nil),            // 5: weir.v1.ReadBatch
-	(*MutationBatch)(nil),        // 6: weir.v1.MutationBatch
-	(*ExecuteRequest)(nil),       // 7: weir.v1.ExecuteRequest
-	(*ExecuteResponse)(nil),      // 8: weir.v1.ExecuteResponse
-	(*Command)(nil),              // 9: weir.v1.Command
-	(*NativeRequest)(nil),        // 10: weir.v1.NativeRequest
-	(*Event)(nil),                // 11: weir.v1.Event
-	(*Empty)(nil),                // 12: weir.v1.Empty
-	(*Document)(nil),             // 13: weir.v1.Document
-	(*Failure)(nil),              // 14: weir.v1.Failure
-	(*ReadRequest)(nil),          // 15: weir.v1.ReadRequest
-	(*ReadResult)(nil),           // 16: weir.v1.ReadResult
-	(*MutateRequest)(nil),        // 17: weir.v1.MutateRequest
-	(*MutationResult)(nil),       // 18: weir.v1.MutationResult
-	(*Transform)(nil),            // 19: weir.v1.Transform
-	(*ProgramTransform)(nil),     // 20: weir.v1.ProgramTransform
-	(*ScanRequest)(nil),          // 21: weir.v1.ScanRequest
-	(*ScanEnd)(nil),              // 22: weir.v1.ScanEnd
-	(*NativeOpen)(nil),           // 23: weir.v1.NativeOpen
-	(*NativeHead)(nil),           // 24: weir.v1.NativeHead
-	(*NativeEnd)(nil),            // 25: weir.v1.NativeEnd
+	(*ExecuteRequest)(nil),       // 5: weir.v1.ExecuteRequest
+	(*ExecuteResponse)(nil),      // 6: weir.v1.ExecuteResponse
+	(*Command)(nil),              // 7: weir.v1.Command
+	(*NativeRequest)(nil),        // 8: weir.v1.NativeRequest
+	(*Event)(nil),                // 9: weir.v1.Event
+	(*Empty)(nil),                // 10: weir.v1.Empty
+	(*Document)(nil),             // 11: weir.v1.Document
+	(*Failure)(nil),              // 12: weir.v1.Failure
+	(*ReadRequest)(nil),          // 13: weir.v1.ReadRequest
+	(*ReadResult)(nil),           // 14: weir.v1.ReadResult
+	(*MutateRequest)(nil),        // 15: weir.v1.MutateRequest
+	(*MutationResult)(nil),       // 16: weir.v1.MutationResult
+	(*Transform)(nil),            // 17: weir.v1.Transform
+	(*ProgramTransform)(nil),     // 18: weir.v1.ProgramTransform
+	(*ScanRequest)(nil),          // 19: weir.v1.ScanRequest
+	(*ScanEnd)(nil),              // 20: weir.v1.ScanEnd
+	(*NativeOpen)(nil),           // 21: weir.v1.NativeOpen
+	(*NativeHead)(nil),           // 22: weir.v1.NativeHead
+	(*NativeEnd)(nil),            // 23: weir.v1.NativeEnd
 }
 var file_api_weir_v1_store_proto_depIdxs = []int32{
-	15, // 0: weir.v1.ReadBatch.requests:type_name -> weir.v1.ReadRequest
-	17, // 1: weir.v1.MutationBatch.requests:type_name -> weir.v1.MutateRequest
-	9,  // 2: weir.v1.ExecuteRequest.command:type_name -> weir.v1.Command
-	11, // 3: weir.v1.ExecuteResponse.event:type_name -> weir.v1.Event
-	5,  // 4: weir.v1.Command.read:type_name -> weir.v1.ReadBatch
-	6,  // 5: weir.v1.Command.mutate:type_name -> weir.v1.MutationBatch
-	21, // 6: weir.v1.Command.scan:type_name -> weir.v1.ScanRequest
-	10, // 7: weir.v1.Command.native:type_name -> weir.v1.NativeRequest
-	23, // 8: weir.v1.NativeRequest.open:type_name -> weir.v1.NativeOpen
-	16, // 9: weir.v1.Event.read_result:type_name -> weir.v1.ReadResult
-	18, // 10: weir.v1.Event.mutation_result:type_name -> weir.v1.MutationResult
-	13, // 11: weir.v1.Event.document:type_name -> weir.v1.Document
-	24, // 12: weir.v1.Event.head:type_name -> weir.v1.NativeHead
-	22, // 13: weir.v1.Event.scan_end:type_name -> weir.v1.ScanEnd
-	25, // 14: weir.v1.Event.native_end:type_name -> weir.v1.NativeEnd
-	0,  // 15: weir.v1.Failure.code:type_name -> weir.v1.FailureCode
-	13, // 16: weir.v1.ReadRequest.adapter_options:type_name -> weir.v1.Document
-	13, // 17: weir.v1.ReadResult.document:type_name -> weir.v1.Document
-	12, // 18: weir.v1.ReadResult.missing:type_name -> weir.v1.Empty
-	14, // 19: weir.v1.ReadResult.failure:type_name -> weir.v1.Failure
-	13, // 20: weir.v1.MutateRequest.adapter_options:type_name -> weir.v1.Document
-	13, // 21: weir.v1.MutateRequest.put:type_name -> weir.v1.Document
-	13, // 22: weir.v1.MutateRequest.create:type_name -> weir.v1.Document
-	13, // 23: weir.v1.MutateRequest.replace:type_name -> weir.v1.Document
-	12, // 24: weir.v1.MutateRequest.delete:type_name -> weir.v1.Empty
-	19, // 25: weir.v1.MutateRequest.atomic_transform:type_name -> weir.v1.Transform
-	1,  // 26: weir.v1.MutationResult.outcome:type_name -> weir.v1.MutationOutcome
-	14, // 27: weir.v1.MutationResult.failure:type_name -> weir.v1.Failure
-	20, // 28: weir.v1.Transform.program:type_name -> weir.v1.ProgramTransform
-	13, // 29: weir.v1.Transform.backend_expression:type_name -> weir.v1.Document
-	13, // 30: weir.v1.ProgramTransform.input:type_name -> weir.v1.Document
-	13, // 31: weir.v1.ScanRequest.selector:type_name -> weir.v1.Document
-	14, // 32: weir.v1.ScanEnd.failure:type_name -> weir.v1.Failure
-	13, // 33: weir.v1.NativeOpen.descriptor:type_name -> weir.v1.Document
-	13, // 34: weir.v1.NativeHead.metadata:type_name -> weir.v1.Document
-	2,  // 35: weir.v1.NativeEnd.completion:type_name -> weir.v1.NativeCompletion
-	14, // 36: weir.v1.NativeEnd.failure:type_name -> weir.v1.Failure
-	3,  // 37: weir.v1.StoreService.ResolveStore:input_type -> weir.v1.ResolveStoreRequest
-	7,  // 38: weir.v1.StoreService.Execute:input_type -> weir.v1.ExecuteRequest
-	4,  // 39: weir.v1.StoreService.ResolveStore:output_type -> weir.v1.ResolveStoreResponse
-	8,  // 40: weir.v1.StoreService.Execute:output_type -> weir.v1.ExecuteResponse
-	39, // [39:41] is the sub-list for method output_type
-	37, // [37:39] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	7,  // 0: weir.v1.ExecuteRequest.command:type_name -> weir.v1.Command
+	9,  // 1: weir.v1.ExecuteResponse.event:type_name -> weir.v1.Event
+	13, // 2: weir.v1.Command.read:type_name -> weir.v1.ReadRequest
+	15, // 3: weir.v1.Command.mutate:type_name -> weir.v1.MutateRequest
+	19, // 4: weir.v1.Command.scan:type_name -> weir.v1.ScanRequest
+	8,  // 5: weir.v1.Command.native:type_name -> weir.v1.NativeRequest
+	21, // 6: weir.v1.NativeRequest.open:type_name -> weir.v1.NativeOpen
+	14, // 7: weir.v1.Event.read_result:type_name -> weir.v1.ReadResult
+	16, // 8: weir.v1.Event.mutation_result:type_name -> weir.v1.MutationResult
+	11, // 9: weir.v1.Event.document:type_name -> weir.v1.Document
+	22, // 10: weir.v1.Event.head:type_name -> weir.v1.NativeHead
+	20, // 11: weir.v1.Event.scan_end:type_name -> weir.v1.ScanEnd
+	23, // 12: weir.v1.Event.native_end:type_name -> weir.v1.NativeEnd
+	0,  // 13: weir.v1.Failure.code:type_name -> weir.v1.FailureCode
+	11, // 14: weir.v1.ReadResult.document:type_name -> weir.v1.Document
+	10, // 15: weir.v1.ReadResult.missing:type_name -> weir.v1.Empty
+	12, // 16: weir.v1.ReadResult.failure:type_name -> weir.v1.Failure
+	11, // 17: weir.v1.MutateRequest.put:type_name -> weir.v1.Document
+	11, // 18: weir.v1.MutateRequest.create:type_name -> weir.v1.Document
+	11, // 19: weir.v1.MutateRequest.replace:type_name -> weir.v1.Document
+	10, // 20: weir.v1.MutateRequest.delete:type_name -> weir.v1.Empty
+	17, // 21: weir.v1.MutateRequest.atomic_transform:type_name -> weir.v1.Transform
+	1,  // 22: weir.v1.MutationResult.outcome:type_name -> weir.v1.MutationOutcome
+	12, // 23: weir.v1.MutationResult.failure:type_name -> weir.v1.Failure
+	18, // 24: weir.v1.Transform.program:type_name -> weir.v1.ProgramTransform
+	11, // 25: weir.v1.Transform.backend_expression:type_name -> weir.v1.Document
+	11, // 26: weir.v1.ProgramTransform.input:type_name -> weir.v1.Document
+	11, // 27: weir.v1.ScanRequest.selector:type_name -> weir.v1.Document
+	12, // 28: weir.v1.ScanEnd.failure:type_name -> weir.v1.Failure
+	11, // 29: weir.v1.NativeOpen.descriptor:type_name -> weir.v1.Document
+	11, // 30: weir.v1.NativeHead.metadata:type_name -> weir.v1.Document
+	2,  // 31: weir.v1.NativeEnd.completion:type_name -> weir.v1.NativeCompletion
+	12, // 32: weir.v1.NativeEnd.failure:type_name -> weir.v1.Failure
+	3,  // 33: weir.v1.StoreService.ResolveStore:input_type -> weir.v1.ResolveStoreRequest
+	5,  // 34: weir.v1.StoreService.Execute:input_type -> weir.v1.ExecuteRequest
+	4,  // 35: weir.v1.StoreService.ResolveStore:output_type -> weir.v1.ResolveStoreResponse
+	6,  // 36: weir.v1.StoreService.Execute:output_type -> weir.v1.ExecuteResponse
+	35, // [35:37] is the sub-list for method output_type
+	33, // [33:35] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_api_weir_v1_store_proto_init() }
@@ -2151,13 +2005,13 @@ func file_api_weir_v1_store_proto_init() {
 	if File_api_weir_v1_store_proto != nil {
 		return
 	}
-	file_api_weir_v1_store_proto_msgTypes[6].OneofWrappers = []any{
+	file_api_weir_v1_store_proto_msgTypes[4].OneofWrappers = []any{
 		(*Command_Read)(nil),
 		(*Command_Mutate)(nil),
 		(*Command_Scan)(nil),
 		(*Command_Native)(nil),
 	}
-	file_api_weir_v1_store_proto_msgTypes[8].OneofWrappers = []any{
+	file_api_weir_v1_store_proto_msgTypes[6].OneofWrappers = []any{
 		(*Event_ReadResult)(nil),
 		(*Event_MutationResult)(nil),
 		(*Event_Document)(nil),
@@ -2166,19 +2020,19 @@ func file_api_weir_v1_store_proto_init() {
 		(*Event_ScanEnd)(nil),
 		(*Event_NativeEnd)(nil),
 	}
-	file_api_weir_v1_store_proto_msgTypes[13].OneofWrappers = []any{
+	file_api_weir_v1_store_proto_msgTypes[11].OneofWrappers = []any{
 		(*ReadResult_Document)(nil),
 		(*ReadResult_Missing)(nil),
 		(*ReadResult_Failure)(nil),
 	}
-	file_api_weir_v1_store_proto_msgTypes[14].OneofWrappers = []any{
+	file_api_weir_v1_store_proto_msgTypes[12].OneofWrappers = []any{
 		(*MutateRequest_Put)(nil),
 		(*MutateRequest_Create)(nil),
 		(*MutateRequest_Replace)(nil),
 		(*MutateRequest_Delete)(nil),
 		(*MutateRequest_AtomicTransform)(nil),
 	}
-	file_api_weir_v1_store_proto_msgTypes[16].OneofWrappers = []any{
+	file_api_weir_v1_store_proto_msgTypes[14].OneofWrappers = []any{
 		(*Transform_Program)(nil),
 		(*Transform_BackendExpression)(nil),
 	}
@@ -2189,7 +2043,7 @@ func file_api_weir_v1_store_proto_init() {
 			GoPackagePath: reflect.TypeOf(packageMarker).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_weir_v1_store_proto_rawDesc), len(file_api_weir_v1_store_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   23,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

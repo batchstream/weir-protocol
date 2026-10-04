@@ -77,8 +77,8 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	messages := File_api_weir_v1_store_proto.Messages()
 	command := messages.ByName("Command")
 	fields := []fieldContract{
-		{name: "read", kind: protoreflect.MessageKind, message: "weir.v1.ReadBatch"},
-		{name: "mutate", kind: protoreflect.MessageKind, message: "weir.v1.MutationBatch"},
+		{name: "read", kind: protoreflect.MessageKind, message: "weir.v1.ReadRequest"},
+		{name: "mutate", kind: protoreflect.MessageKind, message: "weir.v1.MutateRequest"},
 		{name: "scan", kind: protoreflect.MessageKind, message: "weir.v1.ScanRequest"},
 		{name: "native", kind: protoreflect.MessageKind, message: "weir.v1.NativeRequest"},
 	}
@@ -86,10 +86,6 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	if command.Oneofs().Len() != 1 || command.Oneofs().Get(0).Name() != "operation" {
 		t.Fatal("command operation union changed")
 	}
-	reads := []fieldContract{{name: "requests", kind: protoreflect.MessageKind, repeated: true, message: "weir.v1.ReadRequest"}}
-	mutations := []fieldContract{{name: "requests", kind: protoreflect.MessageKind, repeated: true, message: "weir.v1.MutateRequest"}}
-	assertFields(t, messages.ByName("ReadBatch"), reads)
-	assertFields(t, messages.ByName("MutationBatch"), mutations)
 	events := []fieldContract{
 		{name: "read_result", kind: protoreflect.MessageKind, message: "weir.v1.ReadResult"},
 		{name: "mutation_result", kind: protoreflect.MessageKind, message: "weir.v1.MutationResult"},
