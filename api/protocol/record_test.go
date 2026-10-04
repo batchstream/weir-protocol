@@ -48,8 +48,8 @@ func TestMaximalSingleMutationAndProgramInput(t *testing.T) {
 		t.Fatal("oversized document accepted")
 	}
 	document.Data = make([]byte, MaxDocument)
-	program := &pb.ProgramTransform{Runtime: "lua.v1", Source: []byte(strings.Repeat(" ", MaxExpression)), Input: document}
-	form := &pb.Transform_Program{Program: program}
+	program := &pb.LuaTransform{Source: []byte(strings.Repeat(" ", MaxExpression)), Input: document}
+	form := &pb.Transform_Lua{Lua: program}
 	transform := &pb.Transform{Form: form}
 	transformAction := &pb.MutateRequest_AtomicTransform{AtomicTransform: transform}
 	mutation.Action = transformAction

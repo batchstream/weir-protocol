@@ -25,7 +25,7 @@ const (
 	MaxEvent                = MaxDocument + (8 << 10)
 	MaxResourceBytes        = 4096
 	MaxExpression           = 16 << 10
-	MaxSelector             = 16 << 10
+	MaxScanFilterBytes      = 16 << 10
 )
 
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9]){0,62}$`)
@@ -156,24 +156,20 @@ func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
 			return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing transform")
 		}
 		switch transform := action.AtomicTransform.Form.(type) {
-		case *pb.Transform_Program:
+		case *pb.Transform_Lua:
 			if transform == nil {
 				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing transform")
 			}
-			program := transform.Program
-			if program == nil ||
-				program.Runtime == "" ||
-				len(program.Source) == 0 ||
-				len(program.Source) > MaxExpression ||
-				!utf8.Valid(program.Source) ||
-				strings.IndexByte(string(program.Source), 0) >= 0 ||
-				strings.HasPrefix(string(program.Source), "\x1bLua") {
-				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized program transform")
+			lua := transform.Lua
+			if lua == nil ||
+				len(lua.Source) == 0 ||
+				len(lua.Source) > MaxExpression ||
+				!utf8.Valid(lua.Source) ||
+				strings.IndexByte(string(lua.Source), 0) >= 0 ||
+				strings.HasPrefix(string(lua.Source), "\x1bLua") {
+				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized Lua transform")
 			}
-			if program.Runtime != "lua.v1" {
-				return Fail(pb.FailureCode_UNSUPPORTED, "program runtime is unsupported")
-			}
-			if program.Input != nil && !validDocument(program.Input, MaxDocument) {
+			if lua.Input != nil && !validDocument(lua.Input, MaxDocument) {
 				return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
 			}
 			return nil
@@ -200,6 +196,13 @@ func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
 func validMedia(s string) bool { return len(s) <= 127 && mediaPattern.MatchString(s) }
 
 func ValidateScan(req *pb.ScanRequest) *pb.Failure {
+	if req == nil || hasUnknown(req.ProtoReflect()) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing Scan or unknown fields")
+	}
+	return validateScan(req)
+}
+
+func validateScan(req *pb.ScanRequest) *pb.Failure {
 	if req == nil || proto.Size(req) > MaxExecuteRequestBytes {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized Scan")
 	}
@@ -209,24 +212,13 @@ func ValidateScan(req *pb.ScanRequest) *pb.Failure {
 	if req.PageSize > MaxScanPageSize || len(req.ContinuationToken) > MaxScanToken {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "Scan page size or continuation exceeds bound")
 	}
-	if d := req.Selector; d != nil && (!validMedia(d.ContentType) || len(d.Data) > MaxSelector) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid or oversized selector")
+	if d := req.Filter; d != nil && (!validMedia(d.ContentType) || len(d.Data) == 0 || len(d.Data) > MaxScanFilterBytes) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid or oversized Scan filter")
 	}
-	return nil
+	return validateProjection(req.Projection)
 }
 
 const NativeChunk = 64 << 10
-const NativeDescriptor = 64 << 10
-
-func ValidateNative(open *pb.NativeOpen) *pb.Failure {
-	if open == nil || !validDocument(open.Descriptor_, NativeDescriptor) || open.BodyContentType != "" && !validMedia(open.BodyContentType) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Native Open bounds")
-	}
-	if !validRelativeResource(open.Resource) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Native relative resource")
-	}
-	return nil
-}
 
 func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 	completion := pb.NativeCompletion_NATIVE_NOT_STARTED
@@ -313,12 +305,12 @@ func validateCommand(command *pb.Command) error {
 		if operation == nil {
 			return fmt.Errorf("missing Scan request")
 		}
-		failure = ValidateScan(operation.Scan)
+		failure = validateScan(operation.Scan)
 	case *pb.Command_Native:
 		if operation == nil || operation.Native == nil {
 			return fmt.Errorf("missing Native request")
 		}
-		failure = ValidateNative(operation.Native.Open)
+		failure = validateNative(operation.Native)
 	default:
 		return fmt.Errorf("missing command operation")
 	}
@@ -422,7 +414,7 @@ func validateEvent(event *pb.Event) error {
 			break
 		}
 		head := value.Head
-		valid = head != nil && (head.BodyContentType == "" || validMedia(head.BodyContentType)) && (head.Metadata == nil || validDocument(head.Metadata, NativeDescriptor))
+		valid = head != nil && (head.BodyContentType == "" || validMedia(head.BodyContentType)) && validHTTPResponse(head.Http)
 	case *pb.Event_Chunk:
 		if value == nil {
 			break

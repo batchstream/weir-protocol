@@ -76,10 +76,9 @@ func (x *Header) GetValues() []string {
 	return nil
 }
 
-// Request is the Search Native descriptor encoded with the profile media type
-// application/vnd.weir.search-http.v1+protobuf. The selected Store resource names
+// HttpRequest is one Search Native request. The selected Store resource names
 // the concrete index; the adapter adds that index before this relative HTTP path.
-type Request struct {
+type HttpRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// HTTP method supported by the adapter for this operation.
 	Method string `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
@@ -88,25 +87,29 @@ type Request struct {
 	// Canonically encoded query string without a leading '?'.
 	Query string `protobuf:"bytes,3,opt,name=query,proto3" json:"query,omitempty"`
 	// Optional request headers allowed by the Search adapter.
-	Headers       []*Header `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty"`
+	Headers []*Header `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty"`
+	// MIME type of body without parameters; required when body is nonempty.
+	BodyContentType string `protobuf:"bytes,5,opt,name=body_content_type,json=bodyContentType,proto3" json:"body_content_type,omitempty"`
+	// Complete request body, at most 8 MiB, supplied independently of HTTP framing.
+	Body          []byte `protobuf:"bytes,6,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Request) Reset() {
-	*x = Request{}
+func (x *HttpRequest) Reset() {
+	*x = HttpRequest{}
 	mi := &file_api_weir_search_v1_http_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Request) String() string {
+func (x *HttpRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Request) ProtoMessage() {}
+func (*HttpRequest) ProtoMessage() {}
 
-func (x *Request) ProtoReflect() protoreflect.Message {
+func (x *HttpRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_api_weir_search_v1_http_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -118,42 +121,56 @@ func (x *Request) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Request.ProtoReflect.Descriptor instead.
-func (*Request) Descriptor() ([]byte, []int) {
+// Deprecated: Use HttpRequest.ProtoReflect.Descriptor instead.
+func (*HttpRequest) Descriptor() ([]byte, []int) {
 	return file_api_weir_search_v1_http_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *Request) GetMethod() string {
+func (x *HttpRequest) GetMethod() string {
 	if x != nil {
 		return x.Method
 	}
 	return ""
 }
 
-func (x *Request) GetPath() string {
+func (x *HttpRequest) GetPath() string {
 	if x != nil {
 		return x.Path
 	}
 	return ""
 }
 
-func (x *Request) GetQuery() string {
+func (x *HttpRequest) GetQuery() string {
 	if x != nil {
 		return x.Query
 	}
 	return ""
 }
 
-func (x *Request) GetHeaders() []*Header {
+func (x *HttpRequest) GetHeaders() []*Header {
 	if x != nil {
 		return x.Headers
 	}
 	return nil
 }
 
-// Response is the Search Native response metadata in the same profile format.
+func (x *HttpRequest) GetBodyContentType() string {
+	if x != nil {
+		return x.BodyContentType
+	}
+	return ""
+}
+
+func (x *HttpRequest) GetBody() []byte {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+// HttpResponse is the Search Native response metadata.
 // HTTP status is preserved independently of the NativeEnd transport evidence.
-type Response struct {
+type HttpResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Original backend HTTP status code, including non-success responses.
 	StatusCode uint32 `protobuf:"varint,1,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
@@ -163,20 +180,20 @@ type Response struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Response) Reset() {
-	*x = Response{}
+func (x *HttpResponse) Reset() {
+	*x = HttpResponse{}
 	mi := &file_api_weir_search_v1_http_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Response) String() string {
+func (x *HttpResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Response) ProtoMessage() {}
+func (*HttpResponse) ProtoMessage() {}
 
-func (x *Response) ProtoReflect() protoreflect.Message {
+func (x *HttpResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_api_weir_search_v1_http_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -188,19 +205,19 @@ func (x *Response) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Response.ProtoReflect.Descriptor instead.
-func (*Response) Descriptor() ([]byte, []int) {
+// Deprecated: Use HttpResponse.ProtoReflect.Descriptor instead.
+func (*HttpResponse) Descriptor() ([]byte, []int) {
 	return file_api_weir_search_v1_http_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *Response) GetStatusCode() uint32 {
+func (x *HttpResponse) GetStatusCode() uint32 {
 	if x != nil {
 		return x.StatusCode
 	}
 	return 0
 }
 
-func (x *Response) GetHeaders() []*Header {
+func (x *HttpResponse) GetHeaders() []*Header {
 	if x != nil {
 		return x.Headers
 	}
@@ -214,13 +231,15 @@ const file_api_weir_search_v1_http_proto_rawDesc = "" +
 	"\x1dapi/weir/search/v1/http.proto\x12\x0eweir.search.v1\"4\n" +
 	"\x06Header\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
-	"\x06values\x18\x02 \x03(\tR\x06values\"}\n" +
-	"\aRequest\x12\x16\n" +
+	"\x06values\x18\x02 \x03(\tR\x06values\"\xc1\x01\n" +
+	"\vHttpRequest\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x14\n" +
 	"\x05query\x18\x03 \x01(\tR\x05query\x120\n" +
-	"\aheaders\x18\x04 \x03(\v2\x16.weir.search.v1.HeaderR\aheaders\"]\n" +
-	"\bResponse\x12\x1f\n" +
+	"\aheaders\x18\x04 \x03(\v2\x16.weir.search.v1.HeaderR\aheaders\x12*\n" +
+	"\x11body_content_type\x18\x05 \x01(\tR\x0fbodyContentType\x12\x12\n" +
+	"\x04body\x18\x06 \x01(\fR\x04body\"a\n" +
+	"\fHttpResponse\x12\x1f\n" +
 	"\vstatus_code\x18\x01 \x01(\rR\n" +
 	"statusCode\x120\n" +
 	"\aheaders\x18\x02 \x03(\v2\x16.weir.search.v1.HeaderR\aheadersBBZ@github.com/batchstream/weir-protocol/api/weir/search/v1;searchv1b\x06proto3"
@@ -239,13 +258,13 @@ func file_api_weir_search_v1_http_proto_rawDescGZIP() []byte {
 
 var file_api_weir_search_v1_http_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_api_weir_search_v1_http_proto_goTypes = []any{
-	(*Header)(nil),   // 0: weir.search.v1.Header
-	(*Request)(nil),  // 1: weir.search.v1.Request
-	(*Response)(nil), // 2: weir.search.v1.Response
+	(*Header)(nil),       // 0: weir.search.v1.Header
+	(*HttpRequest)(nil),  // 1: weir.search.v1.HttpRequest
+	(*HttpResponse)(nil), // 2: weir.search.v1.HttpResponse
 }
 var file_api_weir_search_v1_http_proto_depIdxs = []int32{
-	0, // 0: weir.search.v1.Request.headers:type_name -> weir.search.v1.Header
-	0, // 1: weir.search.v1.Response.headers:type_name -> weir.search.v1.Header
+	0, // 0: weir.search.v1.HttpRequest.headers:type_name -> weir.search.v1.Header
+	0, // 1: weir.search.v1.HttpResponse.headers:type_name -> weir.search.v1.Header
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name

@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"strings"
 	"testing"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
@@ -16,7 +15,7 @@ func TestTypedNilOneofsRejectWithoutPanicking(t *testing.T) {
 		{Resource: "records/s:key", Action: (*pb.MutateRequest_AtomicTransform)(nil)},
 	}
 	transforms := []*pb.Transform{
-		{Form: (*pb.Transform_Program)(nil)},
+		{Form: (*pb.Transform_Lua)(nil)},
 		{Form: (*pb.Transform_BackendExpression)(nil)},
 	}
 	for _, transform := range transforms {
@@ -77,35 +76,19 @@ func TestTypedNilOneofsRejectWithoutPanicking(t *testing.T) {
 	}
 }
 
-func TestNativeContentTypesAreExplicitAndValid(t *testing.T) {
-	descriptor := &pb.Document{ContentType: "application/opaque"}
-	open := &pb.NativeOpen{Resource: "records", Descriptor_: descriptor}
-	if failure := ValidateNative(open); failure != nil {
-		t.Fatal(failure)
-	}
-	open.BodyContentType = "INVALID"
-	if failure := ValidateNative(open); failure == nil {
-		t.Fatal("invalid body content type accepted")
-	}
-	open.BodyContentType = "application/json"
-	descriptor.ContentType = "INVALID"
-	if failure := ValidateNative(open); failure == nil {
-		t.Fatal("invalid descriptor content type accepted")
-	}
-}
-
-func TestNativeMaximalLegalFieldsFitEnvelope(t *testing.T) {
-	contentType := strings.Repeat("a", 63) + "/" + strings.Repeat("b", 63)
-	descriptor := &pb.Document{ContentType: contentType, Data: make([]byte, NativeDescriptor)}
-	open := &pb.NativeOpen{Resource: strings.Repeat("x", MaxResourceBytes), Descriptor_: descriptor, BodyContentType: contentType}
-	native := &pb.NativeRequest{Open: open, Body: make([]byte, 8<<20)}
-	operation := &pb.Command_Native{Native: native}
-	command := &pb.Command{Operation: operation}
-	request := &pb.ExecuteRequest{StoreName: strings.Repeat("a", 63), Index: 1, Command: command}
-	if failure := ValidateNative(open); failure != nil {
-		t.Fatal("legal maximal native fields rejected", failure)
-	}
-	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("legal maximal native request rejected", err)
+func TestTypedNilNativeRequestsRejectWithoutPanicking(t *testing.T) {
+	for _, request := range []*pb.NativeRequest{
+		{Resource: "records", Request: (*pb.NativeRequest_MongodbCommand)(nil)},
+		{Resource: "records", Request: (*pb.NativeRequest_SearchHttp)(nil)},
+		{Resource: "records", Request: &pb.NativeRequest_SearchHttp{}},
+	} {
+		if failure := ValidateNative(request); failure == nil {
+			t.Fatal("typed nil Native request accepted")
+		}
+		operation := &pb.Command_Native{Native: request}
+		command := &pb.Command{Operation: operation}
+		if err := ValidateCommand(command); err == nil {
+			t.Fatal("typed nil Native command accepted")
+		}
 	}
 }

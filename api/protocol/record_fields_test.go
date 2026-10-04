@@ -21,8 +21,8 @@ func TestMutationFieldPolicy(t *testing.T) {
 	nilDelete := &pb.MutateRequest_Delete{}
 	invalidPut := &pb.MutateRequest_Put{Put: invalidDocument}
 	oversizedPut := &pb.MutateRequest_Put{Put: oversizedDocument}
-	program := &pb.ProgramTransform{Runtime: "lua.v1", Source: []byte("return weir.keep()"), Input: document}
-	programForm := &pb.Transform_Program{Program: program}
+	program := &pb.LuaTransform{Source: []byte("return weir.keep()"), Input: document}
+	programForm := &pb.Transform_Lua{Lua: program}
 	programTransform := &pb.Transform{Form: programForm}
 	programAction := &pb.MutateRequest_AtomicTransform{AtomicTransform: programTransform}
 	expression := &pb.Transform_BackendExpression{BackendExpression: document}
@@ -72,11 +72,6 @@ func TestMutationFieldPolicy(t *testing.T) {
 	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal("program at the byte bound rejected", err)
 	}
-	program.Runtime = "lua.v2"
-	if err := ValidateExecuteRequest(request); err == nil {
-		t.Fatal("unsupported runtime accepted")
-	}
-	program.Runtime = "lua.v1"
 	program.Input = invalidDocument
 	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("invalid program input accepted")

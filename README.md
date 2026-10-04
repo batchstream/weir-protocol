@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.5.0
+go get github.com/batchstream/weir-protocol@v0.6.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -13,7 +13,7 @@ It contains no peer discovery protocol, server lifecycle, backend adapter, or SD
 
 - `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
   `Execute` for Read, Mutate, Scan, and Native.
-- `api/weir/search/v1`: public Search HTTP descriptor DTOs.
+- `api/weir/search/v1`: typed public Search HTTP request/response DTOs.
 - `api/protocol`: common envelope, endpoint, resource and scan validation.
 - `api/netlimit`: bounded standard Go DNS transport.
 
@@ -29,7 +29,10 @@ Execute selects one Store and operation kind for its lifetime. Each Read or Muta
 request carries one record. Servers aggregate admitted records into database
 batches; clients send and consume incrementally without collecting a wire batch.
 There is no item or byte bound on the total call. Documents are bounded at 2 MiB;
-Native may carry one bounded body within the 9 MiB Command limit.
+Native selects a BSON mongodb_command or typed search_http request with a body
+bounded at 8 MiB, within the 9 MiB Command limit. Search HTTP metadata is bounded
+separately at 64 KiB. NativeHead carries a typed HttpResponse for Search, with no
+HTTP field for MongoDB replies.
 
 Each request is validated before execution. Earlier requests may have effects
 when a later request fails validation. The first record index is 1; every later
@@ -39,7 +42,9 @@ Servers and clients enforce Store/kind consistency and index sequences. Stateles
 validators check each envelope, nested fields, and bounds; unknown fields are
 rejected throughout the message tree.
 
-Read results distinguish missing documents and individual backend failures.
+ReadResult.missing confirms document absence after a successful read.
+TARGET_NOT_FOUND reports a required collection/index that does not exist; it is
+an individual Failure, not a missing document result.
 Clients can consume results incrementally; SDK convenience collectors may retain
 results at the caller's request. Each response confirms one record.
 
@@ -50,11 +55,24 @@ or leading slash. `ParseRelativeResource` validates and decodes these paths;
 
 A mutation stream is not a transaction. Mutations to the same resource execute in
 input order across requests, including after a failed item; different resources may
-run in parallel. Ordering across streams follows the database semantics. An APPLIED result may also
+run in parallel. Ordering across streams follows the database semantics. APPLIED also includes satisfied no-op semantics such as Lua keep or deleting an
+already missing document. An APPLIED result may also
 carry a subsequent acknowledgement failure; other outcomes require a Failure.
 An individually received MutationResult retains its application evidence if the
 stream later fails. A submitted mutation without a result may have applied.
 Clients must never automatically replay unacknowledged mutations.
+
+Scan uses a native BSON filter object or JSON Search query object directly, with
+an optional typed Projection. Projection requires a uniform include/exclude mode
+and nonempty bounded dot-separated field paths; duplicate, ancestor-overlapping,
+operator and wildcard paths are invalid. An absent Projection returns full
+documents. The projection participates in traversal identity.
+
+LuaTransform supplies Source and optional Input without a runtime selector. Its
+current document can be typed missing: merging missing with an object can create
+a document, keep/delete on missing are successful no-ops, and reject is a
+PRECONDITION_FAILED/NOT_APPLIED result. Nil or no return means keep; a returned
+typed object means replace.
 
 Scan and Native accept one Command at index 1, followed by client half-close, and
 emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
@@ -117,7 +135,7 @@ project's named struct style in generated code. Regeneration is byte reproducibl
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.5.0
+gh workflow run release.yml --ref main -f version=v0.6.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete
