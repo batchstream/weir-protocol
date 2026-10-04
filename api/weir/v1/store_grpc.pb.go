@@ -20,8 +20,6 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	StoreService_ResolveStore_FullMethodName = "/weir.v1.StoreService/ResolveStore"
-	StoreService_Read_FullMethodName         = "/weir.v1.StoreService/Read"
-	StoreService_Mutate_FullMethodName       = "/weir.v1.StoreService/Mutate"
 	StoreService_Execute_FullMethodName      = "/weir.v1.StoreService/Execute"
 )
 
@@ -34,18 +32,17 @@ const (
 type StoreServiceClient interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error)
-	// Read validates the entire batch before execution and preserves input order.
-	// Missing documents and backend failures are reported separately for each item.
-	Read(ctx context.Context, in *ReadBatchRequest, opts ...grpc.CallOption) (*ReadBatchResponse, error)
-	// Mutate validates the entire batch before executing independent mutations.
-	// Mutations to one resource run in input order, including after item failures;
-	// different resources may run concurrently. A batch is not a transaction.
-	// Across RPCs, ordering follows the database semantics. Never replay mutations
-	// automatically: a failed RPC cannot prove that its mutations were not applied.
-	Mutate(ctx context.Context, in *MutateBatchRequest, opts ...grpc.CallOption) (*MutateBatchResponse, error)
-	// Execute runs one finite Scan or Native request and streams typed events.
+	// Execute accepts bounded frames and emits indexed results incrementally.
+	// A stream selects one Store and operation kind. Read and Mutate frames use
+	// consecutive one-based record indexes; each frame is validated before its
+	// execution, so earlier frames may have effects before a later frame fails.
+	// Mutations to the same resource preserve input order across frames, including
+	// after item failures. Different resources may execute concurrently. A stream
+	// is not a transaction; ordering across streams follows database semantics.
+	// Never automatically replay mutations without individual application evidence.
+	// Scan and Native accept exactly one frame with index 1 followed by half-close.
 	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecuteResponse], error)
+	Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
 }
 
 type storeServiceClient struct {
@@ -67,44 +64,18 @@ func (c *storeServiceClient) ResolveStore(ctx context.Context, in *ResolveStoreR
 	return out, nil
 }
 
-func (c *storeServiceClient) Read(ctx context.Context, in *ReadBatchRequest, opts ...grpc.CallOption) (*ReadBatchResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReadBatchResponse)
-	err := c.cc.Invoke(ctx, StoreService_Read_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storeServiceClient) Mutate(ctx context.Context, in *MutateBatchRequest, opts ...grpc.CallOption) (*MutateBatchResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MutateBatchResponse)
-	err := c.cc.Invoke(ctx, StoreService_Mutate_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storeServiceClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecuteResponse], error) {
+func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &StoreService_ServiceDesc.Streams[0], StoreService_Execute_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &grpc.GenericClientStream[ExecuteRequest, ExecuteResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StoreService_ExecuteClient = grpc.ServerStreamingClient[ExecuteResponse]
+type StoreService_ExecuteClient = grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse]
 
 // StoreServiceServer is the server API for StoreService service.
 // All implementations must embed UnimplementedStoreServiceServer
@@ -115,18 +86,17 @@ type StoreService_ExecuteClient = grpc.ServerStreamingClient[ExecuteResponse]
 type StoreServiceServer interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error)
-	// Read validates the entire batch before execution and preserves input order.
-	// Missing documents and backend failures are reported separately for each item.
-	Read(context.Context, *ReadBatchRequest) (*ReadBatchResponse, error)
-	// Mutate validates the entire batch before executing independent mutations.
-	// Mutations to one resource run in input order, including after item failures;
-	// different resources may run concurrently. A batch is not a transaction.
-	// Across RPCs, ordering follows the database semantics. Never replay mutations
-	// automatically: a failed RPC cannot prove that its mutations were not applied.
-	Mutate(context.Context, *MutateBatchRequest) (*MutateBatchResponse, error)
-	// Execute runs one finite Scan or Native request and streams typed events.
+	// Execute accepts bounded frames and emits indexed results incrementally.
+	// A stream selects one Store and operation kind. Read and Mutate frames use
+	// consecutive one-based record indexes; each frame is validated before its
+	// execution, so earlier frames may have effects before a later frame fails.
+	// Mutations to the same resource preserve input order across frames, including
+	// after item failures. Different resources may execute concurrently. A stream
+	// is not a transaction; ordering across streams follows database semantics.
+	// Never automatically replay mutations without individual application evidence.
+	// Scan and Native accept exactly one frame with index 1 followed by half-close.
 	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-	Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecuteResponse]) error
+	Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
 	mustEmbedUnimplementedStoreServiceServer()
 }
 
@@ -140,13 +110,7 @@ type UnimplementedStoreServiceServer struct{}
 func (UnimplementedStoreServiceServer) ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResolveStore not implemented")
 }
-func (UnimplementedStoreServiceServer) Read(context.Context, *ReadBatchRequest) (*ReadBatchResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
-}
-func (UnimplementedStoreServiceServer) Mutate(context.Context, *MutateBatchRequest) (*MutateBatchResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Mutate not implemented")
-}
-func (UnimplementedStoreServiceServer) Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecuteResponse]) error {
+func (UnimplementedStoreServiceServer) Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Execute not implemented")
 }
 func (UnimplementedStoreServiceServer) mustEmbedUnimplementedStoreServiceServer() {}
@@ -188,53 +152,13 @@ func _StoreService_ResolveStore_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StoreService_Read_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReadBatchRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StoreServiceServer).Read(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StoreService_Read_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StoreServiceServer).Read(ctx, req.(*ReadBatchRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StoreService_Mutate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MutateBatchRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StoreServiceServer).Mutate(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StoreService_Mutate_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StoreServiceServer).Mutate(ctx, req.(*MutateBatchRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _StoreService_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ExecuteRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
 	serverStream := &grpc.GenericServerStream[ExecuteRequest, ExecuteResponse]{ServerStream: stream}
-	return srv.(StoreServiceServer).Execute(m, serverStream)
+	return srv.(StoreServiceServer).Execute(serverStream)
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StoreService_ExecuteServer = grpc.ServerStreamingServer[ExecuteResponse]
+type StoreService_ExecuteServer = grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]
 
 // StoreService_ServiceDesc is the grpc.ServiceDesc for StoreService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -247,20 +171,13 @@ var StoreService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "ResolveStore",
 			Handler:    _StoreService_ResolveStore_Handler,
 		},
-		{
-			MethodName: "Read",
-			Handler:    _StoreService_Read_Handler,
-		},
-		{
-			MethodName: "Mutate",
-			Handler:    _StoreService_Mutate_Handler,
-		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Execute",
 			Handler:       _StoreService_Execute_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "api/weir/v1/store.proto",

@@ -5,6 +5,7 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"strings"
@@ -22,11 +23,12 @@ const (
 	MaxExecuteRequestBytes  = MaxCommandBytes + 128
 	MaxExecuteResponseBytes = MaxEvent + 64
 	MaxEvent                = MaxDocument + (8 << 10)
-	MaxBatchRequestBytes    = 32 << 20
-	MaxBatchResponseBytes   = 32 << 20
-	MaxResourceBytes        = 4096
-	MaxExpression           = 16 << 10
-	MaxSelector             = 16 << 10
+	// Record frames are bounded independently of the logical call or stream.
+	MaxRecordFrameBytes = 5 << 20
+	MaxRecordFrameItems = 1024
+	MaxResourceBytes    = 4096
+	MaxExpression       = 16 << 10
+	MaxSelector         = 16 << 10
 )
 
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9]){0,62}$`)
@@ -233,32 +235,99 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 	return end
 }
 
-// ValidateExecuteRequest validates one typed Scan or Native request.
+// ValidateExecuteRequest validates one bounded frame without retaining stream
+// state. Callers enforce a fixed Store/kind and consecutive indexes across frames.
 func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
-	if req == nil || !ValidStoreName(req.StoreName) || proto.Size(req) > MaxExecuteRequestBytes || hasUnknown(req.ProtoReflect()) {
+	if req == nil || !ValidStoreName(req.StoreName) || req.Index == 0 {
 		return fmt.Errorf("invalid Execute request envelope")
 	}
-	return ValidateCommand(req.Command)
+	if err := validateCommand(req.Command); err != nil {
+		return err
+	}
+	if proto.Size(req) > MaxExecuteRequestBytes || hasUnknown(req.ProtoReflect()) {
+		return fmt.Errorf("invalid Execute request fields or byte bound")
+	}
+	var count int
+	switch operation := req.Command.Operation.(type) {
+	case *pb.Command_Read:
+		count = len(operation.Read.Requests)
+	case *pb.Command_Mutate:
+		count = len(operation.Mutate.Requests)
+	default:
+		if req.Index != 1 {
+			return fmt.Errorf("Scan and Native require index 1")
+		}
+		return nil
+	}
+	// The next frame's first index must also remain representable.
+	if req.Index > math.MaxUint64-uint64(count) {
+		return fmt.Errorf("record frame indexes overflow")
+	}
+	return nil
 }
 
+// ValidateExecuteResponse validates one indexed event. Stream consumers enforce
+// the expected event kind, result index sequence, and terminal RPC evidence.
 func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
-	if response == nil || proto.Size(response) > MaxExecuteResponseBytes || hasUnknown(response.ProtoReflect()) {
+	if response == nil || response.Index == 0 || response.Index == math.MaxUint64 || proto.Size(response) > MaxExecuteResponseBytes || hasUnknown(response.ProtoReflect()) {
 		return fmt.Errorf("invalid Execute response envelope")
 	}
-	return ValidateEvent(response.Event)
+	if err := validateEvent(response.Event); err != nil {
+		return err
+	}
+	switch response.Event.Value.(type) {
+	case *pb.Event_ReadResult, *pb.Event_MutationResult:
+		return nil
+	default:
+		if response.Index != 1 {
+			return fmt.Errorf("Scan and Native events require index 1")
+		}
+		return nil
+	}
 }
 
-// ValidateCommand requires one Scan or Native request with a canonical relative path.
+// ValidateCommand validates one typed frame, including all of its record fields.
 func ValidateCommand(command *pb.Command) error {
-	if command == nil || command.Operation == nil || proto.Size(command) > MaxCommandBytes || hasUnknown(command.ProtoReflect()) {
+	if err := validateCommand(command); err != nil {
+		return err
+	}
+	if hasUnknown(command.ProtoReflect()) {
+		return fmt.Errorf("unknown command fields")
+	}
+	return nil
+}
+
+func validateCommand(command *pb.Command) error {
+	if command == nil || command.Operation == nil {
 		return fmt.Errorf("invalid command fields or byte bound")
 	}
 	var failure *pb.Failure
 	switch operation := command.Operation.(type) {
+	case *pb.Command_Read:
+		if operation == nil || operation.Read == nil || len(operation.Read.Requests) == 0 || len(operation.Read.Requests) > MaxRecordFrameItems || proto.Size(command) > MaxRecordFrameBytes {
+			return fmt.Errorf("Read requires nonempty requests within frame bounds")
+		}
+		for index, request := range operation.Read.Requests {
+			if err := validateReadRequest(request); err != nil {
+				return fmt.Errorf("Read request %d: %w", index, err)
+			}
+		}
+	case *pb.Command_Mutate:
+		if operation == nil || operation.Mutate == nil || len(operation.Mutate.Requests) == 0 || len(operation.Mutate.Requests) > MaxRecordFrameItems || proto.Size(command) > MaxRecordFrameBytes {
+			return fmt.Errorf("Mutate requires nonempty requests within frame bounds")
+		}
+		for index, request := range operation.Mutate.Requests {
+			if err := validateMutationRequest(request); err != nil {
+				return fmt.Errorf("Mutate request %d: %w", index, err)
+			}
+		}
 	case *pb.Command_Scan:
+		if operation == nil || proto.Size(command) > MaxCommandBytes {
+			return fmt.Errorf("missing Scan request")
+		}
 		failure = ValidateScan(operation.Scan)
 	case *pb.Command_Native:
-		if operation.Native == nil {
+		if operation == nil || operation.Native == nil || proto.Size(command) > MaxCommandBytes {
 			return fmt.Errorf("missing Native request")
 		}
 		failure = ValidateNative(operation.Native.Open)
@@ -333,11 +402,22 @@ func hasUnknown(message protoreflect.Message) bool {
 }
 
 func ValidateEvent(event *pb.Event) error {
-	if event == nil || event.Value == nil || hasUnknown(event.ProtoReflect()) || proto.Size(event) > MaxEvent {
+	if event == nil || hasUnknown(event.ProtoReflect()) {
+		return fmt.Errorf("missing event or unknown fields")
+	}
+	return validateEvent(event)
+}
+
+func validateEvent(event *pb.Event) error {
+	if event == nil || event.Value == nil || proto.Size(event) > MaxEvent {
 		return fmt.Errorf("invalid event fields or byte bound")
 	}
 	valid := false
 	switch value := event.Value.(type) {
+	case *pb.Event_ReadResult:
+		return validateReadResult(value.ReadResult)
+	case *pb.Event_MutationResult:
+		return validateMutationResult(value.MutationResult)
 	case *pb.Event_Document:
 		valid = validDocument(value.Document, MaxDocument)
 	case *pb.Event_Head:

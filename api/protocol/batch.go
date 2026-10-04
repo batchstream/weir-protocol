@@ -4,62 +4,40 @@ import (
 	"fmt"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
-	"google.golang.org/protobuf/proto"
 )
 
-// Batch bounds count encoded envelopes, including every request/result wrapper.
-// There is no independent request-count limit.
-func ValidateReadBatchRequest(request *pb.ReadBatchRequest) error {
-	if request == nil || !ValidStoreName(request.StoreName) || len(request.Requests) == 0 || proto.Size(request) > MaxBatchRequestBytes || hasUnknown(request.ProtoReflect()) {
-		return fmt.Errorf("Read requires a valid Store and nonempty requests within the batch byte bound")
+// ValidateReadRequest validates one record before it is placed in a frame.
+func ValidateReadRequest(request *pb.ReadRequest) error {
+	if request == nil || hasUnknown(request.ProtoReflect()) {
+		return fmt.Errorf("missing Read request or unknown fields")
 	}
-	for index, item := range request.Requests {
-		if item == nil || !validRelativeResource(item.Resource) {
-			return fmt.Errorf("Read request %d requires a canonical relative resource", index)
-		}
-		if failure := validateReadFields(item); failure != nil {
-			return fmt.Errorf("Read request %d: %s", index, failure.Message)
-		}
+	return validateReadRequest(request)
+}
+
+func validateReadRequest(request *pb.ReadRequest) error {
+	if request == nil || !validRelativeResource(request.Resource) {
+		return fmt.Errorf("Read requires a canonical relative resource")
+	}
+	if failure := validateReadFields(request); failure != nil {
+		return fmt.Errorf("Read: %s", failure.Message)
 	}
 	return nil
 }
 
-func ValidateMutateBatchRequest(request *pb.MutateBatchRequest) error {
-	if request == nil || !ValidStoreName(request.StoreName) || len(request.Requests) == 0 || proto.Size(request) > MaxBatchRequestBytes || hasUnknown(request.ProtoReflect()) {
-		return fmt.Errorf("Mutate requires a valid Store and nonempty requests within the batch byte bound")
+// ValidateMutationRequest validates one record before it is placed in a frame.
+func ValidateMutationRequest(request *pb.MutateRequest) error {
+	if request == nil || hasUnknown(request.ProtoReflect()) {
+		return fmt.Errorf("missing mutation request or unknown fields")
 	}
-	for index, item := range request.Requests {
-		if item == nil || !validRelativeResource(item.Resource) {
-			return fmt.Errorf("Mutate request %d requires a canonical relative resource", index)
-		}
-		if failure := validateMutationFields(item); failure != nil {
-			return fmt.Errorf("Mutate request %d: %s", index, failure.Message)
-		}
-	}
-	return nil
+	return validateMutationRequest(request)
 }
 
-func ValidateReadBatchResponse(response *pb.ReadBatchResponse, count int) error {
-	// Each result validator checks its nested fields; inspect this envelope once.
-	if response == nil || len(response.Results) != count || proto.Size(response) > MaxBatchResponseBytes || len(response.ProtoReflect().GetUnknown()) != 0 {
-		return fmt.Errorf("invalid Read response count, fields or byte bound")
+func validateMutationRequest(request *pb.MutateRequest) error {
+	if request == nil || !validRelativeResource(request.Resource) {
+		return fmt.Errorf("Mutate requires a canonical relative resource")
 	}
-	for index, result := range response.Results {
-		if err := ValidateReadResult(result); err != nil {
-			return fmt.Errorf("Read result %d: %w", index, err)
-		}
-	}
-	return nil
-}
-
-func ValidateMutateBatchResponse(response *pb.MutateBatchResponse, count int) error {
-	if response == nil || len(response.Results) != count || proto.Size(response) > MaxBatchResponseBytes || len(response.ProtoReflect().GetUnknown()) != 0 {
-		return fmt.Errorf("invalid Mutate response count, fields or byte bound")
-	}
-	for index, result := range response.Results {
-		if err := ValidateMutationResult(result); err != nil {
-			return fmt.Errorf("Mutate result %d: %w", index, err)
-		}
+	if failure := validateMutationFields(request); failure != nil {
+		return fmt.Errorf("Mutate: %s", failure.Message)
 	}
 	return nil
 }
@@ -67,6 +45,13 @@ func ValidateMutateBatchResponse(response *pb.MutateBatchResponse, count int) er
 func ValidateReadResult(result *pb.ReadResult) error {
 	if result == nil || hasUnknown(result.ProtoReflect()) {
 		return fmt.Errorf("missing Read result or unknown fields")
+	}
+	return validateReadResult(result)
+}
+
+func validateReadResult(result *pb.ReadResult) error {
+	if result == nil {
+		return fmt.Errorf("missing Read result")
 	}
 	valid := false
 	switch value := result.Result.(type) {
@@ -84,7 +69,14 @@ func ValidateReadResult(result *pb.ReadResult) error {
 }
 
 func ValidateMutationResult(result *pb.MutationResult) error {
-	if result == nil || hasUnknown(result.ProtoReflect()) || result.Outcome < pb.MutationOutcome_NOT_STARTED || result.Outcome > pb.MutationOutcome_UNKNOWN || !validFailure(result.Failure) {
+	if result == nil || hasUnknown(result.ProtoReflect()) {
+		return fmt.Errorf("missing mutation result or unknown fields")
+	}
+	return validateMutationResult(result)
+}
+
+func validateMutationResult(result *pb.MutationResult) error {
+	if result == nil || result.Outcome < pb.MutationOutcome_NOT_STARTED || result.Outcome > pb.MutationOutcome_UNKNOWN || !validFailure(result.Failure) {
 		return fmt.Errorf("invalid mutation outcome or failure")
 	}
 	// Application evidence can coexist with a subsequent acknowledgement failure.

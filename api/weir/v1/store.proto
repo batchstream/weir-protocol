@@ -10,20 +10,17 @@ service StoreService {
   // ResolveStore returns the current endpoints for one configured Store.
   rpc ResolveStore(ResolveStoreRequest) returns (ResolveStoreResponse);
 
-  // Read validates the entire batch before execution and preserves input order.
-  // Missing documents and backend failures are reported separately for each item.
-  rpc Read(ReadBatchRequest) returns (ReadBatchResponse);
-
-  // Mutate validates the entire batch before executing independent mutations.
-  // Mutations to one resource run in input order, including after item failures;
-  // different resources may run concurrently. A batch is not a transaction.
-  // Across RPCs, ordering follows the database semantics. Never replay mutations
-  // automatically: a failed RPC cannot prove that its mutations were not applied.
-  rpc Mutate(MutateBatchRequest) returns (MutateBatchResponse);
-
-  // Execute runs one finite Scan or Native request and streams typed events.
+  // Execute accepts bounded frames and emits indexed results incrementally.
+  // A stream selects one Store and operation kind. Read and Mutate frames use
+  // consecutive one-based record indexes; each frame is validated before its
+  // execution, so earlier frames may have effects before a later frame fails.
+  // Mutations to the same resource preserve input order across frames, including
+  // after item failures. Different resources may execute concurrently. A stream
+  // is not a transaction; ordering across streams follows database semantics.
+  // Never automatically replay mutations without individual application evidence.
+  // Scan and Native accept exactly one frame with index 1 followed by half-close.
   // A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-  rpc Execute(ExecuteRequest) returns (stream ExecuteResponse);
+  rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
 }
 
 // ResolveStoreRequest selects the Store whose owner endpoints are required.
@@ -44,60 +41,59 @@ message ResolveStoreResponse {
   uint64 cache_ttl_ms = 3;
 }
 
-// ReadBatchRequest contains reads for one Store; the complete encoding is bounded.
-message ReadBatchRequest {
-  // Store that owns every requested resource.
-  string store_name = 1;
-
-  // Nonempty input sequence. Each resource is a canonical path within the Store.
-  repeated ReadRequest requests = 2;
+// ReadBatch contains one bounded frame of independently reported reads.
+message ReadBatch {
+  // Nonempty sequence of at most 1024 requests within a 5 MiB Command encoding.
+  // Resource paths are relative to ExecuteRequest.store_name.
+  repeated ReadRequest requests = 1;
 }
 
-// ReadBatchResponse contains one result at each corresponding input position.
-message ReadBatchResponse {
-  // Results in the same order and count as ReadBatchRequest.requests.
-  repeated ReadResult results = 1;
+// MutationBatch contains one bounded frame of independent mutations.
+message MutationBatch {
+  // Nonempty sequence of at most 1024 requests within a 5 MiB Command encoding.
+  // This bound applies to each frame, not to the total logical call or stream.
+  repeated MutateRequest requests = 1;
 }
 
-// MutateBatchRequest contains independent mutations for one Store.
-message MutateBatchRequest {
-  // Store that owns every requested resource.
-  string store_name = 1;
-
-  // Nonempty input sequence. Each resource is a canonical path within the Store.
-  repeated MutateRequest requests = 2;
-}
-
-// MutateBatchResponse reports the application evidence for each input position.
-message MutateBatchResponse {
-  // Results in the same order and count as MutateBatchRequest.requests.
-  repeated MutationResult results = 1;
-}
-
-// ExecuteRequest binds one finite streaming operation to its owning Store.
+// ExecuteRequest binds one bounded input frame to its owning Store and indexes.
 message ExecuteRequest {
-  // Store that owns the command's canonical relative resource path.
+  // Store that owns all resources; must remain identical throughout the stream.
   string store_name = 1;
 
-  // Required Scan or Native operation.
-  Command command = 2;
+  // One-based ordinal of the first record in this frame. The first frame starts
+  // at 1; each later frame starts immediately after the previous frame's records.
+  // Scan and Native always use 1. The last record's ordinal must not overflow.
+  uint64 index = 2;
+
+  // Required operation; its kind must remain identical throughout the stream.
+  Command command = 3;
 }
 
-// ExecuteResponse carries one event from the requested operation.
+// ExecuteResponse carries one bounded result or streaming event.
 message ExecuteResponse {
-  // Required typed event, in execution order.
-  Event event = 1;
+  // One-based input record ordinal; record results arrive in input order.
+  // Every input record has exactly one result. Scan and Native events all use 1.
+  uint64 index = 1;
+
+  // Required typed event; it must match the stream's operation kind.
+  Event event = 2;
 }
 
-// Command selects one finite operation with incrementally delivered results.
+// Command selects one bounded frame with incrementally delivered results.
 message Command {
   // Exactly one operation is required.
   oneof operation {
+    // Read records and return one indexed ReadResult for every request.
+    ReadBatch read = 1;
+
+    // Apply mutations and return one indexed MutationResult for every request.
+    MutationBatch mutate = 2;
+
     // Read one bounded traversal page.
-    ScanRequest scan = 1;
+    ScanRequest scan = 3;
 
     // Execute an adapter-owned operation with an opaque request body.
-    NativeRequest native = 2;
+    NativeRequest native = 4;
   }
 }
 
@@ -110,24 +106,30 @@ message NativeRequest {
   bytes body = 2;
 }
 
-// Event is either a Scan document/end or Native head/body/end event.
+// Event is a per-record result, Scan document/end, or Native head/body/end event.
 message Event {
   // Exactly one event value is required.
   oneof value {
+    // Result for the ReadRequest identified by ExecuteResponse.index.
+    ReadResult read_result = 1;
+
+    // Application evidence for the MutateRequest identified by the response index.
+    MutationResult mutation_result = 2;
+
     // Next document in the current Scan page.
-    Document document = 1;
+    Document document = 3;
 
     // Native response metadata, delivered before response body chunks.
-    NativeHead head = 2;
+    NativeHead head = 4;
 
     // Nonempty opaque fragment of the Native response body.
-    bytes chunk = 3;
+    bytes chunk = 5;
 
     // Terminal Scan evidence and an optional successful continuation.
-    ScanEnd scan_end = 4;
+    ScanEnd scan_end = 6;
 
     // Terminal evidence of Native response transport completion.
-    NativeEnd native_end = 5;
+    NativeEnd native_end = 7;
   }
 }
 
