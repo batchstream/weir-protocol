@@ -94,8 +94,8 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
-	if err := ValidateExecuteResponse(response); err == nil {
-		t.Fatal("unknown response accepted")
+	if err := ValidateExecuteResponse(response); err != nil {
+		t.Fatal("additive response field rejected", err)
 	}
 }
 

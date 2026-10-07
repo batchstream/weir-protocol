@@ -22,6 +22,8 @@ const (
 )
 
 // FailureCode classifies operation failures independently of backend error types.
+// Future positive codes are opaque generic failures. Clients retain the numeric
+// code and separate application/transport evidence without inferring retry safety.
 type FailureCode int32
 
 const (
@@ -116,6 +118,7 @@ func (FailureCode) EnumDescriptor() ([]byte, []int) {
 }
 
 // MutationOutcome describes application evidence, not whether an error occurred.
+// Its vocabulary is fixed; unknown values are invalid completion evidence.
 type MutationOutcome int32
 
 const (
@@ -231,6 +234,7 @@ func (ProjectionMode) EnumDescriptor() ([]byte, []int) {
 }
 
 // NativeCompletion reports response transport evidence, never mutation outcomes.
+// Its vocabulary is fixed; unknown values are invalid completion evidence.
 type NativeCompletion int32
 
 const (
@@ -962,7 +966,7 @@ func (x *Document) GetData() []byte {
 // Failure carries one bounded, readable description of an operation failure.
 type Failure struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Required nonzero failure classification.
+	// Required positive failure classification; unknown positive values are valid.
 	Code FailureCode `protobuf:"varint,1,opt,name=code,proto3,enum=weir.v1.FailureCode" json:"code,omitempty"`
 	// UTF-8 diagnostic text; clients must use code for programmatic decisions.
 	Message       string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
@@ -1453,11 +1457,16 @@ func (*Transform_Lua) isTransform_Form() {}
 
 func (*Transform_BackendExpression) isTransform_Form() {}
 
-// LuaTransform supplies source code and optional input to Weir's Lua runtime.
+// LuaTransform supplies source code and optional input with Lua 5.4 semantics.
 // Source returns one function(current, incoming), using ordinary document tables.
 // Missing current or omitted Input is nil. The callback returns exactly one
-// object to replace/create, or an explicit keep/delete/reject action. Nil or
-// missing/multiple callback returns are invalid.
+// object to replace/create, or weir.keep(), weir.delete(), or weir.reject(message).
+// Keep/delete on a missing document are successful no-ops; reject is
+// NOT_APPLIED/PRECONDITION_FAILED. Nil, arrays, scalars, and missing/multiple
+// callback returns are invalid. A callback error or invalid result never writes.
+// Null is weir.null(); object/array tables and exact signed 64-bit integers retain
+// their document kinds. Helpers and conversion rules are part of this contract.
+// Source, entry point, return actions, and Lua semantics have no runtime selector.
 type LuaTransform struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Nonempty UTF-8 source code; precompiled bytecode is not accepted.
@@ -1570,6 +1579,11 @@ func (x *Projection) GetFields() []string {
 }
 
 // ScanRequest reads one finite page from an adapter-owned ordered traversal.
+// Scan is read-only and returns documents without independent resource identity.
+// Continuations bind Store, backend profile, resource, filter, and projection;
+// page_size may change. MongoDB provides no cross-page snapshot and no imposed
+// token expiry. Search uses a backend PIT with 60s validity, refreshed by requests.
+// A failed/expired continuation must fail; clients must not restart automatically.
 type ScanRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Canonical traversal target path relative to the selected Store.
@@ -1581,7 +1595,10 @@ type ScanRequest struct {
 	Projection *Projection `protobuf:"bytes,3,opt,name=projection,proto3" json:"projection,omitempty"`
 	// Maximum documents in this page. Zero uses 128; the maximum is 256.
 	PageSize uint32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Opaque checkpoint from a completed page, reusable on a node serving this Store.
+	// Opaque versioned checkpoint from a completed page, portable across nodes
+	// serving the same Store with an equivalent backend configuration. During a
+	// rolling upgrade, readers retain its format for the advertised validity.
+	// Tokens detect corruption only; they are not authentication or authorization.
 	ContinuationToken []byte `protobuf:"bytes,5,opt,name=continuation_token,json=continuationToken,proto3" json:"continuation_token,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache

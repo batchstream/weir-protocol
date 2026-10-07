@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // ValidateReadRequest validates one record before it is sent.
@@ -39,16 +40,11 @@ func validateMutationRequest(request *pb.MutateRequest) error {
 	return nil
 }
 
+// ValidateReadResult checks the required result variant and byte bound, ignoring
+// additive ancillary fields.
 func ValidateReadResult(result *pb.ReadResult) error {
-	if result == nil || hasUnknown(result.ProtoReflect()) {
-		return fmt.Errorf("missing Read result or unknown fields")
-	}
-	return validateReadResult(result)
-}
-
-func validateReadResult(result *pb.ReadResult) error {
-	if result == nil {
-		return fmt.Errorf("missing Read result")
+	if result == nil || proto.Size(result) > MaxEvent {
+		return fmt.Errorf("missing or oversized Read result")
 	}
 	valid := false
 	switch value := result.Result.(type) {
@@ -74,15 +70,10 @@ func validateReadResult(result *pb.ReadResult) error {
 	return nil
 }
 
+// ValidateMutationResult checks fixed application evidence, allowing future
+// positive failure codes and additive ancillary fields within the byte bound.
 func ValidateMutationResult(result *pb.MutationResult) error {
-	if result == nil || hasUnknown(result.ProtoReflect()) {
-		return fmt.Errorf("missing mutation result or unknown fields")
-	}
-	return validateMutationResult(result)
-}
-
-func validateMutationResult(result *pb.MutationResult) error {
-	if result == nil || result.Outcome < pb.MutationOutcome_NOT_STARTED || result.Outcome > pb.MutationOutcome_UNKNOWN || !validFailure(result.Failure) {
+	if result == nil || proto.Size(result) > MaxEvent || result.Outcome < pb.MutationOutcome_NOT_STARTED || result.Outcome > pb.MutationOutcome_UNKNOWN || !validFailure(result.Failure) {
 		return fmt.Errorf("invalid mutation outcome or failure")
 	}
 	// Application evidence can coexist with a subsequent acknowledgement failure.

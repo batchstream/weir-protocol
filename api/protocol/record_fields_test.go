@@ -86,7 +86,7 @@ func TestMutationFieldPolicy(t *testing.T) {
 	}
 }
 
-func TestRecordResponsesRejectUnknownAtEveryNestedLevel(t *testing.T) {
+func TestRecordResponsesAcceptAdditiveFieldsAtEveryNestedLevel(t *testing.T) {
 	document := &pb.Document{ContentType: "application/opaque", Data: []byte("uninterpreted")}
 	read := ReadDocument(document)
 	response := readResponse(1, read)
@@ -97,8 +97,11 @@ func TestRecordResponsesRejectUnknownAtEveryNestedLevel(t *testing.T) {
 			t.Fatal("fixture must be valid before mutation", err)
 		}
 		messages[position].ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
-		if err := ValidateExecuteResponse(copied); err == nil {
-			t.Fatalf("unknown Read fields accepted at level %d", position)
+		if err := ValidateExecuteResponse(copied); err != nil {
+			t.Fatalf("additive Read field rejected at level %d: %v", position, err)
+		}
+		if err := ValidateReadResult(copied.Event.GetReadResult()); err != nil {
+			t.Fatalf("additive direct Read field rejected at level %d: %v", position, err)
 		}
 	}
 	failure := Fail(pb.FailureCode_UNAVAILABLE, "unavailable")
@@ -111,8 +114,11 @@ func TestRecordResponsesRejectUnknownAtEveryNestedLevel(t *testing.T) {
 			t.Fatal("fixture must be valid before mutation", err)
 		}
 		messages[position].ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
-		if err := ValidateExecuteResponse(copied); err == nil {
-			t.Fatalf("unknown Mutate fields accepted at level %d", position)
+		if err := ValidateExecuteResponse(copied); err != nil {
+			t.Fatalf("additive Mutate field rejected at level %d: %v", position, err)
+		}
+		if err := ValidateMutationResult(copied.Event.GetMutationResult()); err != nil {
+			t.Fatalf("additive direct Mutate field rejected at level %d: %v", position, err)
 		}
 	}
 }
