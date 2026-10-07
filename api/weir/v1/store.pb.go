@@ -1440,7 +1440,7 @@ type isTransform_Form interface {
 }
 
 type Transform_Lua struct {
-	// Lua operating on the current document or typed missing value.
+	// Lua operating on the current document or nil when absent.
 	Lua *LuaTransform `protobuf:"bytes,1,opt,name=lua,proto3,oneof"`
 }
 
@@ -1454,9 +1454,10 @@ func (*Transform_Lua) isTransform_Form() {}
 func (*Transform_BackendExpression) isTransform_Form() {}
 
 // LuaTransform supplies source code and optional input to Weir's Lua runtime.
-// A missing document is a typed missing value. Returning an object replaces or
-// creates it; returning nil or no value keeps it. Explicit replace/keep/delete/reject
-// actions provide the same atomic mutation semantics.
+// Source returns one function(current, incoming), using ordinary document tables.
+// Missing current or omitted Input is nil. The callback returns exactly one
+// object to replace/create, or an explicit keep/delete/reject action. Nil or
+// missing/multiple callback returns are invalid.
 type LuaTransform struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Nonempty UTF-8 source code; precompiled bytecode is not accepted.

@@ -69,11 +69,14 @@ control characters and wildcard paths are invalid. Literal field names such as
 `$field` are allowed by the protocol; adapters enforce their own field rules. An absent Projection returns full
 documents. The projection participates in traversal identity.
 
-LuaTransform supplies Source and optional Input without a runtime selector. Its
-current document can be typed missing: merging missing with an object can create
-a document, keep/delete on missing are successful no-ops, and reject is a
-PRECONDITION_FAILED/NOT_APPLIED result. Nil or no return means keep; a returned
-typed object means replace.
+LuaTransform supplies Source and optional Input without a runtime selector.
+Source returns exactly one function, called as `function(current, incoming)`.
+Missing current or omitted Input is nil; documents are ordinary Lua tables.
+The callback returns exactly one object to create/replace, or an explicit
+`weir.keep()`, `weir.delete()` or `weir.reject(message)` action. Keep/delete on
+missing are successful no-ops; reject is PRECONDITION_FAILED/NOT_APPLIED.
+Nil, missing/multiple returns and scalar results are invalid. Explicit null is
+`weir.null()`. See the server's [Lua guide](https://github.com/batchstream/weir/blob/main/docs/lua.md).
 
 Scan and Native accept one Command at index 1, followed by client half-close, and
 emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
