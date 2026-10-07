@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.7.0
+go get github.com/batchstream/weir-protocol@v0.8.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -39,8 +39,10 @@ when a later request fails validation. The first record index is 1; every later
 request advances it by one. UINT64_MAX is invalid. Every record produces one
 bounded ExecuteResponse with its ordinal and typed result, in input order.
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
-validators check each envelope, nested fields, and bounds; unknown fields are
-rejected throughout the message tree.
+validators check each envelope, nested fields, and bounds. Requests reject unknown
+fields throughout the message tree. Responses tolerate additive ancillary fields
+within the same byte bounds, while still requiring recognized result/event variants
+and valid completion evidence.
 
 ReadResult.missing confirms document absence after a successful read.
 TARGET_NOT_FOUND reports a required adapter-owned target that does not exist; it is
@@ -69,13 +71,16 @@ control characters and wildcard paths are invalid. Literal field names such as
 `$field` are allowed by the protocol; adapters enforce their own field rules. An absent Projection returns full
 documents. The projection participates in traversal identity.
 
-LuaTransform supplies Source and optional Input without a runtime selector.
+LuaTransform supplies Source and optional Input with Lua 5.4 semantics and no
+runtime selector. The entry point, return actions, helper set and document
+conversion rules are stable parts of the contract.
 Source returns exactly one function, called as `function(current, incoming)`.
 Missing current or omitted Input is nil; documents are ordinary Lua tables.
 The callback returns exactly one object to create/replace, or an explicit
 `weir.keep()`, `weir.delete()` or `weir.reject(message)` action. Keep/delete on
 missing are successful no-ops; reject is PRECONDITION_FAILED/NOT_APPLIED.
-Nil, missing/multiple returns and scalar results are invalid. Explicit null is
+Nil, missing/multiple returns, arrays and scalar results are invalid. A callback
+error or invalid result never writes. Explicit null is
 `weir.null()`. See the server's [Lua guide](https://github.com/batchstream/weir/blob/main/docs/lua.md).
 
 Scan and Native accept one Command at index 1, followed by client half-close, and
@@ -87,6 +92,52 @@ incremental consumption for Scan and Native responses. A Scan continuation is
 bound to its Store, backend profile, and traversal settings. Its checksum detects
 corruption only and provides no authentication or authorization. Requests still
 validate their Store and adapter-owned resources.
+
+## Continuation contract
+
+Scan is read-only and returns documents without independent resource identity.
+Continuation format 1 binds the Store, backend profile, resource, filter presence,
+content type and exact bytes, and projection presence, mode and ordered fields.
+Page size and the supplied token are excluded. The traversal fingerprint is
+SHA-256 over named fields, with each name and value prefixed by a 32-bit big-endian
+byte length. Its `format` field is `weir.scan.traversal.v1`; it never depends on
+protobuf serialization or unknown fields. Fixed vectors protect this encoding.
+
+The internal token envelope has an explicit version. Unsupported versions,
+request mismatches and corruption fail before the backend checkpoint is consumed.
+The checksum is not a signature; a token cannot bypass Store access or resource
+validation. Clients keep tokens opaque and accept a checkpoint only after a
+successful terminal ScanEnd, matching document count and final gRPC OK.
+
+Tokens are portable across nodes serving the same Store with an equivalent backend
+configuration. MongoDB pages use ordered resume state, provide no cross-page
+snapshot and impose no protocol token expiry; changes between pages can affect
+the traversal. Search pages share a backend point-in-time snapshot with 60 seconds
+of validity, refreshed by successful page requests. Backend deletion, PIT expiry
+or incompatible configuration can invalidate a continuation. A failure never
+automatically restarts traversal. Rolling upgrades must keep reading issued token
+and checkpoint formats for their advertised validity.
+
+## Evolution rules
+
+The current schema and semantics are the baseline. There are no legacy runtime
+modes or migration paths. Field numbers, types and meanings are permanent;
+removed fields reserve their numbers and names. Semantically new request fields,
+operations or options require an explicit contract/RPC version because requests
+fail closed. There is no implicit feature negotiation.
+
+Response additions may carry ancillary data without changing the selected
+result/event, required fields, completion evidence or byte bounds. A response
+containing only an unrecognized oneof variant is invalid. Future positive
+FailureCode values are preserved as opaque generic failures; zero and negative
+values are invalid. Clients must not infer retry safety from an unknown code or
+discard APPLIED evidence when it accompanies a Failure. MutationOutcome and
+NativeCompletion are fixed evidence vocabularies and reject unknown values.
+
+Native content types, backend expressions and filters retain adapter-owned
+semantics. Each adapter must document and preserve its accepted formats and
+limits; opaque bytes do not waive that contract. Changes to Lua helpers,
+conversions or execution semantics also require an explicit contract version.
 
 ## Validate
 
@@ -139,7 +190,7 @@ project's named struct style in generated code. Regeneration is byte reproducibl
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.7.0
+gh workflow run release.yml --ref main -f version=v0.8.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete

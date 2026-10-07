@@ -97,8 +97,8 @@ func TestRecordResponsesRejectMalformedApplicationEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	missing.GetMissing().ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
-	if err := ValidateExecuteResponse(response); err == nil {
-		t.Fatal("nested unknown result field accepted")
+	if err := ValidateExecuteResponse(response); err != nil {
+		t.Fatal("additive missing-result field rejected", err)
 	}
 	response.Event.GetReadResult().Result = nil
 	if err := ValidateExecuteResponse(response); err == nil {

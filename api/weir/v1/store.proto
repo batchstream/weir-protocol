@@ -4,6 +4,12 @@ package weir.v1;
 
 option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 
+// This file defines the current stable contract. Requests reject unknown fields
+// recursively; new request semantics require an explicit contract/RPC version.
+// Responses tolerate additive ancillary fields within existing byte bounds, but
+// still require recognized oneof results/events and fixed evidence enums.
+// Field numbers, types, and meanings are permanent; reserve deleted numbers/names.
+
 // StoreService discovers Store endpoints and executes requests on their owners.
 // Initialize through ResolveStore, then connect directly to a returned endpoint.
 service StoreService {
@@ -132,6 +138,8 @@ message Document {
 }
 
 // FailureCode classifies operation failures independently of backend error types.
+// Future positive codes are opaque generic failures. Clients retain the numeric
+// code and separate application/transport evidence without inferring retry safety.
 enum FailureCode {
   // Unset value; invalid in a reported Failure.
   FAILURE_CODE_UNSPECIFIED = 0;
@@ -175,6 +183,7 @@ enum FailureCode {
 }
 
 // MutationOutcome describes application evidence, not whether an error occurred.
+// Its vocabulary is fixed; unknown values are invalid completion evidence.
 enum MutationOutcome {
   // Unset value; invalid in a reported MutationResult.
   MUTATION_OUTCOME_UNSPECIFIED = 0;
@@ -195,7 +204,7 @@ enum MutationOutcome {
 
 // Failure carries one bounded, readable description of an operation failure.
 message Failure {
-  // Required nonzero failure classification.
+  // Required positive failure classification; unknown positive values are valid.
   FailureCode code = 1;
 
   // UTF-8 diagnostic text; clients must use code for programmatic decisions.
@@ -268,11 +277,16 @@ message Transform {
   }
 }
 
-// LuaTransform supplies source code and optional input to Weir's Lua runtime.
+// LuaTransform supplies source code and optional input with Lua 5.4 semantics.
 // Source returns one function(current, incoming), using ordinary document tables.
 // Missing current or omitted Input is nil. The callback returns exactly one
-// object to replace/create, or an explicit keep/delete/reject action. Nil or
-// missing/multiple callback returns are invalid.
+// object to replace/create, or weir.keep(), weir.delete(), or weir.reject(message).
+// Keep/delete on a missing document are successful no-ops; reject is
+// NOT_APPLIED/PRECONDITION_FAILED. Nil, arrays, scalars, and missing/multiple
+// callback returns are invalid. A callback error or invalid result never writes.
+// Null is weir.null(); object/array tables and exact signed 64-bit integers retain
+// their document kinds. Helpers and conversion rules are part of this contract.
+// Source, entry point, return actions, and Lua semantics have no runtime selector.
 message LuaTransform {
   // Nonempty UTF-8 source code; precompiled bytecode is not accepted.
   bytes source = 1;
@@ -305,6 +319,11 @@ message Projection {
 }
 
 // ScanRequest reads one finite page from an adapter-owned ordered traversal.
+// Scan is read-only and returns documents without independent resource identity.
+// Continuations bind Store, backend profile, resource, filter, and projection;
+// page_size may change. MongoDB provides no cross-page snapshot and no imposed
+// token expiry. Search uses a backend PIT with 60s validity, refreshed by requests.
+// A failed/expired continuation must fail; clients must not restart automatically.
 message ScanRequest {
   // Canonical traversal target path relative to the selected Store.
   string resource = 1;
@@ -319,7 +338,10 @@ message ScanRequest {
   // Maximum documents in this page. Zero uses 128; the maximum is 256.
   uint32 page_size = 4;
 
-  // Opaque checkpoint from a completed page, reusable on a node serving this Store.
+  // Opaque versioned checkpoint from a completed page, portable across nodes
+  // serving the same Store with an equivalent backend configuration. During a
+  // rolling upgrade, readers retain its format for the advertised validity.
+  // Tokens detect corruption only; they are not authentication or authorization.
   bytes continuation_token = 5;
 }
 
@@ -341,6 +363,7 @@ message ScanEnd {
 }
 
 // NativeCompletion reports response transport evidence, never mutation outcomes.
+// Its vocabulary is fixed; unknown values are invalid completion evidence.
 enum NativeCompletion {
   // Unset value; invalid in a reported NativeEnd.
   NATIVE_COMPLETION_UNSPECIFIED = 0;
