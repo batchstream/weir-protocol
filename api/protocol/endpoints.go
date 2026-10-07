@@ -67,7 +67,7 @@ func CanonicalEndpoints(input []string) ([]string, error) {
 		out = append(out, address)
 	}
 	slices.Sort(out)
-	if len(slices.Compact(slices.Clone(out))) != len(out) {
+	if len(slices.Compact(out)) != len(out) {
 		return nil, errors.New("duplicate discovery endpoint")
 	}
 	return out, nil
