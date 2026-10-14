@@ -646,7 +646,9 @@ func (*Command_Native) isCommand_Operation() {}
 // NativeRequest supplies an adapter-owned operation with its complete input.
 type NativeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Canonical target path relative to the selected Store.
+	// Optional canonical target prefix relative to the selected Store. Empty
+	// selects the backend root when supported by its target grammar. Native has
+	// no command, path, or parameter allowlist; backend permissions apply.
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
 	// Required opaque request document, with at most 8 MiB of payload bytes.
 	// The adapter interprets content_type and data; empty data is permitted.
@@ -1182,9 +1184,15 @@ type MutateRequest struct {
 	//	*MutateRequest_Replace
 	//	*MutateRequest_Delete
 	//	*MutateRequest_AtomicTransform
-	Action        isMutateRequest_Action `protobuf_oneof:"action"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Action isMutateRequest_Action `protobuf_oneof:"action"`
+	// Wait until the applied mutation is visible to subsequent searches before
+	// returning a successful result. False requires application evidence only.
+	// APPLIED with a Failure retains application evidence but does not confirm
+	// visibility. Adapters without a separate search refresh satisfy this once
+	// the mutation is acknowledged. Applies to every action, including no-ops.
+	WaitUntilVisible bool `protobuf:"varint,7,opt,name=wait_until_visible,json=waitUntilVisible,proto3" json:"wait_until_visible,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *MutateRequest) Reset() {
@@ -1274,6 +1282,13 @@ func (x *MutateRequest) GetAtomicTransform() *Transform {
 		}
 	}
 	return nil
+}
+
+func (x *MutateRequest) GetWaitUntilVisible() bool {
+	if x != nil {
+		return x.WaitUntilVisible
+	}
+	return false
 }
 
 type isMutateRequest_Action interface {
@@ -1911,14 +1926,15 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\bdocument\x18\x01 \x01(\v2\x11.weir.v1.DocumentH\x00R\bdocument\x12*\n" +
 	"\amissing\x18\x02 \x01(\v2\x0e.weir.v1.EmptyH\x00R\amissing\x12,\n" +
 	"\afailure\x18\x03 \x01(\v2\x10.weir.v1.FailureH\x00R\afailureB\b\n" +
-	"\x06result\"\xa3\x02\n" +
+	"\x06result\"\xd1\x02\n" +
 	"\rMutateRequest\x12\x1a\n" +
 	"\bresource\x18\x01 \x01(\tR\bresource\x12%\n" +
 	"\x03put\x18\x02 \x01(\v2\x11.weir.v1.DocumentH\x00R\x03put\x12+\n" +
 	"\x06create\x18\x03 \x01(\v2\x11.weir.v1.DocumentH\x00R\x06create\x12-\n" +
 	"\areplace\x18\x04 \x01(\v2\x11.weir.v1.DocumentH\x00R\areplace\x12(\n" +
 	"\x06delete\x18\x05 \x01(\v2\x0e.weir.v1.EmptyH\x00R\x06delete\x12?\n" +
-	"\x10atomic_transform\x18\x06 \x01(\v2\x12.weir.v1.TransformH\x00R\x0fatomicTransformB\b\n" +
+	"\x10atomic_transform\x18\x06 \x01(\v2\x12.weir.v1.TransformH\x00R\x0fatomicTransform\x12,\n" +
+	"\x12wait_until_visible\x18\a \x01(\bR\x10waitUntilVisibleB\b\n" +
 	"\x06action\"p\n" +
 	"\x0eMutationResult\x122\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2\x18.weir.v1.MutationOutcomeR\aoutcome\x12*\n" +
@@ -1985,10 +2001,10 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\x1dNATIVE_COMPLETION_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12NATIVE_NOT_STARTED\x10\x01\x12\x15\n" +
 	"\x11RESPONSE_COMPLETE\x10\x02\x12\x17\n" +
-	"\x13RESPONSE_INCOMPLETE\x10\x032\x9d\x01\n" +
+	"\x13RESPONSE_INCOMPLETE\x10\x032\x9f\x01\n" +
 	"\fStoreService\x12K\n" +
-	"\fResolveStore\x12\x1c.weir.v1.ResolveStoreRequest\x1a\x1d.weir.v1.ResolveStoreResponse\x12@\n" +
-	"\aExecute\x12\x17.weir.v1.ExecuteRequest\x1a\x18.weir.v1.ExecuteResponse(\x010\x01B9Z7github.com/batchstream/weir-protocol/api/weir/v1;weirv1b\x06proto3"
+	"\fResolveStore\x12\x1c.weir.v1.ResolveStoreRequest\x1a\x1d.weir.v1.ResolveStoreResponse\x12B\n" +
+	"\tExecuteV2\x12\x17.weir.v1.ExecuteRequest\x1a\x18.weir.v1.ExecuteResponse(\x010\x01B9Z7github.com/batchstream/weir-protocol/api/weir/v1;weirv1b\x06proto3"
 
 var (
 	file_api_weir_v1_store_proto_rawDescOnce sync.Once
@@ -2067,9 +2083,9 @@ var file_api_weir_v1_store_proto_depIdxs = []int32{
 	3,  // 32: weir.v1.NativeEnd.completion:type_name -> weir.v1.NativeCompletion
 	13, // 33: weir.v1.NativeEnd.failure:type_name -> weir.v1.Failure
 	4,  // 34: weir.v1.StoreService.ResolveStore:input_type -> weir.v1.ResolveStoreRequest
-	6,  // 35: weir.v1.StoreService.Execute:input_type -> weir.v1.ExecuteRequest
+	6,  // 35: weir.v1.StoreService.ExecuteV2:input_type -> weir.v1.ExecuteRequest
 	5,  // 36: weir.v1.StoreService.ResolveStore:output_type -> weir.v1.ResolveStoreResponse
-	7,  // 37: weir.v1.StoreService.Execute:output_type -> weir.v1.ExecuteResponse
+	7,  // 37: weir.v1.StoreService.ExecuteV2:output_type -> weir.v1.ExecuteResponse
 	36, // [36:38] is the sub-list for method output_type
 	34, // [34:36] is the sub-list for method input_type
 	34, // [34:34] is the sub-list for extension type_name

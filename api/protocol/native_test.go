@@ -32,6 +32,37 @@ func TestNativeAcceptsOpaqueStoreOwnedRequests(t *testing.T) {
 	}
 }
 
+func TestOnlyNativePermitsEmptyBackendRootResource(t *testing.T) {
+	document := &pb.Document{ContentType: "application/http", Data: []byte("GET /_cluster/health HTTP/1.1\r\n\r\n")}
+	request := nativeExecution(document)
+	request.Command.GetNative().Resource = ""
+	if err := ValidateExecuteRequest(request); err != nil {
+		t.Fatal("Native backend root request rejected", err)
+	}
+	if failure := ValidateNative(request.Command.GetNative()); failure != nil {
+		t.Fatal("Native backend root rejected directly", failure)
+	}
+	read := &pb.ReadRequest{}
+	if err := ValidateReadRequest(read); err == nil {
+		t.Fatal("Read accepted an empty resource")
+	}
+	put := &pb.MutateRequest_Put{Put: document}
+	mutation := &pb.MutateRequest{Action: put}
+	if err := ValidateMutationRequest(mutation); err == nil {
+		t.Fatal("Mutate accepted an empty resource")
+	}
+	scan := &pb.ScanRequest{}
+	if failure := ValidateScan(scan); failure == nil {
+		t.Fatal("Scan accepted an empty resource")
+	}
+	for _, resource := range []string{"/root", "root/..", "root/%6B", "weir://other/root", strings.Repeat("x", MaxResourceBytes+1)} {
+		request.Command.GetNative().Resource = resource
+		if err := ValidateExecuteRequest(request); err == nil {
+			t.Fatal("Native accepted a malformed or oversized target prefix", resource)
+		}
+	}
+}
+
 func TestNativeRequestBoundsAndUnknownFields(t *testing.T) {
 	document := &pb.Document{ContentType: "application/vnd.example.command", Data: []byte{1}}
 	for _, mutate := range []func(*pb.NativeRequest){

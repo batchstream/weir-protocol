@@ -16,7 +16,9 @@ service StoreService {
   // ResolveStore returns the current endpoints for one configured Store.
   rpc ResolveStore(ResolveStoreRequest) returns (ResolveStoreResponse);
 
-  // Execute accepts bounded requests and emits indexed results incrementally.
+  // ExecuteV2 accepts bounded requests and emits indexed results incrementally.
+  // This explicit contract version adds mutation visibility and unrestricted
+  // Native operations. The earlier Execute RPC is no longer served.
   // A stream selects one Store and operation kind. Each Read or Mutate request
   // carries one record with a consecutive one-based index. It is validated
   // before execution; earlier records may have effects before a later one fails.
@@ -26,7 +28,7 @@ service StoreService {
   // Never automatically replay mutations without individual application evidence.
   // Scan and Native accept exactly one request with index 1 followed by half-close.
   // A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-  rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
+  rpc ExecuteV2(stream ExecuteRequest) returns (stream ExecuteResponse);
 }
 
 // ResolveStoreRequest selects the Store whose owner endpoints are required.
@@ -90,7 +92,9 @@ message Command {
 
 // NativeRequest supplies an adapter-owned operation with its complete input.
 message NativeRequest {
-  // Canonical target path relative to the selected Store.
+  // Optional canonical target prefix relative to the selected Store. Empty
+  // selects the backend root when supported by its target grammar. Native has
+  // no command, path, or parameter allowlist; backend permissions apply.
   string resource = 1;
 
   // Required opaque request document, with at most 8 MiB of payload bytes.
@@ -254,6 +258,13 @@ message MutateRequest {
     // Apply Lua source or a backend expression atomically to the resource.
     Transform atomic_transform = 6;
   }
+
+  // Wait until the applied mutation is visible to subsequent searches before
+  // returning a successful result. False requires application evidence only.
+  // APPLIED with a Failure retains application evidence but does not confirm
+  // visibility. Adapters without a separate search refresh satisfy this once
+  // the mutation is acknowledged. Applies to every action, including no-ops.
+  bool wait_until_visible = 7;
 }
 
 // MutationResult reports the known application outcome and any associated failure.

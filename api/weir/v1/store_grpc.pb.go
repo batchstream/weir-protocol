@@ -20,7 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	StoreService_ResolveStore_FullMethodName = "/weir.v1.StoreService/ResolveStore"
-	StoreService_Execute_FullMethodName      = "/weir.v1.StoreService/Execute"
+	StoreService_ExecuteV2_FullMethodName    = "/weir.v1.StoreService/ExecuteV2"
 )
 
 // StoreServiceClient is the client API for StoreService service.
@@ -32,7 +32,9 @@ const (
 type StoreServiceClient interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error)
-	// Execute accepts bounded requests and emits indexed results incrementally.
+	// ExecuteV2 accepts bounded requests and emits indexed results incrementally.
+	// This explicit contract version adds mutation visibility and unrestricted
+	// Native operations. The earlier Execute RPC is no longer served.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index. It is validated
 	// before execution; earlier records may have effects before a later one fails.
@@ -42,7 +44,7 @@ type StoreServiceClient interface {
 	// Never automatically replay mutations without individual application evidence.
 	// Scan and Native accept exactly one request with index 1 followed by half-close.
 	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-	Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
+	ExecuteV2(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
 }
 
 type storeServiceClient struct {
@@ -64,9 +66,9 @@ func (c *storeServiceClient) ResolveStore(ctx context.Context, in *ResolveStoreR
 	return out, nil
 }
 
-func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error) {
+func (c *storeServiceClient) ExecuteV2(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StoreService_ServiceDesc.Streams[0], StoreService_Execute_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StoreService_ServiceDesc.Streams[0], StoreService_ExecuteV2_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +77,7 @@ func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOptio
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StoreService_ExecuteClient = grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse]
+type StoreService_ExecuteV2Client = grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse]
 
 // StoreServiceServer is the server API for StoreService service.
 // All implementations must embed UnimplementedStoreServiceServer
@@ -86,7 +88,9 @@ type StoreService_ExecuteClient = grpc.BidiStreamingClient[ExecuteRequest, Execu
 type StoreServiceServer interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error)
-	// Execute accepts bounded requests and emits indexed results incrementally.
+	// ExecuteV2 accepts bounded requests and emits indexed results incrementally.
+	// This explicit contract version adds mutation visibility and unrestricted
+	// Native operations. The earlier Execute RPC is no longer served.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index. It is validated
 	// before execution; earlier records may have effects before a later one fails.
@@ -96,7 +100,7 @@ type StoreServiceServer interface {
 	// Never automatically replay mutations without individual application evidence.
 	// Scan and Native accept exactly one request with index 1 followed by half-close.
 	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-	Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
+	ExecuteV2(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
 	mustEmbedUnimplementedStoreServiceServer()
 }
 
@@ -110,8 +114,8 @@ type UnimplementedStoreServiceServer struct{}
 func (UnimplementedStoreServiceServer) ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResolveStore not implemented")
 }
-func (UnimplementedStoreServiceServer) Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method Execute not implemented")
+func (UnimplementedStoreServiceServer) ExecuteV2(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ExecuteV2 not implemented")
 }
 func (UnimplementedStoreServiceServer) mustEmbedUnimplementedStoreServiceServer() {}
 func (UnimplementedStoreServiceServer) testEmbeddedByValue()                      {}
@@ -152,13 +156,13 @@ func _StoreService_ResolveStore_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StoreService_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _StoreService_ExecuteV2_Handler(srv interface{}, stream grpc.ServerStream) error {
 	serverStream := &grpc.GenericServerStream[ExecuteRequest, ExecuteResponse]{ServerStream: stream}
-	return srv.(StoreServiceServer).Execute(serverStream)
+	return srv.(StoreServiceServer).ExecuteV2(serverStream)
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StoreService_ExecuteServer = grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]
+type StoreService_ExecuteV2Server = grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]
 
 // StoreService_ServiceDesc is the grpc.ServiceDesc for StoreService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -174,8 +178,8 @@ var StoreService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Execute",
-			Handler:       _StoreService_Execute_Handler,
+			StreamName:    "ExecuteV2",
+			Handler:       _StoreService_ExecuteV2_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

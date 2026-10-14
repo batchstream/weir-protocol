@@ -52,15 +52,18 @@ func TestPublicStoreContract(t *testing.T) {
 	if service == nil {
 		t.Fatal("public Store service missing")
 	}
+	if service.Methods().Len() != 2 || service.Methods().ByName("Execute") != nil || len(StoreService_ServiceDesc.Streams) != 1 || StoreService_ServiceDesc.Streams[0].StreamName != "ExecuteV2" {
+		t.Fatal("legacy Execute RPC must not remain in the public service")
+	}
 	resolve := service.Methods().ByName("ResolveStore")
-	execute := service.Methods().ByName("Execute")
+	execute := service.Methods().ByName("ExecuteV2")
 	if resolve == nil || resolve.Input().FullName() != "weir.v1.ResolveStoreRequest" || resolve.Output().FullName() != "weir.v1.ResolveStoreResponse" || resolve.IsStreamingClient() || resolve.IsStreamingServer() {
 		t.Fatal("ResolveStore unary contract changed", resolve)
 	}
 	if execute == nil || execute.Input().FullName() != "weir.v1.ExecuteRequest" || execute.Output().FullName() != "weir.v1.ExecuteResponse" || !execute.IsStreamingClient() || !execute.IsStreamingServer() {
-		t.Fatal("Execute bidirectional contract changed", execute)
+		t.Fatal("ExecuteV2 bidirectional contract changed", execute)
 	}
-	if StoreService_ResolveStore_FullMethodName != "/weir.v1.StoreService/ResolveStore" || StoreService_Execute_FullMethodName != "/weir.v1.StoreService/Execute" {
+	if StoreService_ResolveStore_FullMethodName != "/weir.v1.StoreService/ResolveStore" || StoreService_ExecuteV2_FullMethodName != "/weir.v1.StoreService/ExecuteV2" {
 		t.Fatal("generated public method paths changed")
 	}
 	request := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}}
@@ -96,6 +99,19 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 		{name: "native_end", kind: protoreflect.MessageKind, message: "weir.v1.NativeEnd"},
 	}
 	assertFields(t, messages.ByName("Event"), events)
+	mutation := []fieldContract{
+		{name: "resource", kind: protoreflect.StringKind},
+		{name: "put", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
+		{name: "create", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
+		{name: "replace", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
+		{name: "delete", kind: protoreflect.MessageKind, message: "weir.v1.Empty"},
+		{name: "atomic_transform", kind: protoreflect.MessageKind, message: "weir.v1.Transform"},
+		{name: "wait_until_visible", kind: protoreflect.BoolKind},
+	}
+	assertFields(t, messages.ByName("MutateRequest"), mutation)
+	if messages.ByName("MutateRequest").Fields().ByName("wait_until_visible").ContainingOneof() != nil {
+		t.Fatal("visibility must apply to every mutation action")
+	}
 }
 
 func TestStoreNeutralNativeScanAndLuaContract(t *testing.T) {
