@@ -20,7 +20,7 @@ func TestMutationOptionsRejectUnknownFieldsAndVisibility(t *testing.T) {
 			t.Fatal("undeclared visibility accepted in Execute", visibility)
 		}
 	}
-	for _, visibility := range []pb.MutationVisibility{pb.MutationVisibility_APPLICATION_ACKNOWLEDGED, pb.MutationVisibility_SEARCH_VISIBLE} {
+	for _, visibility := range []pb.MutationVisibility{pb.MutationVisibility_APPLICATION_ACKNOWLEDGED, pb.MutationVisibility_QUERY_VISIBLE} {
 		options := &pb.MutationOptions{Visibility: visibility}
 		options.ProtoReflect().SetUnknown([]byte{0x10, 1})
 		mutation := &pb.MutateRequest{Resource: "records/s:key", Action: action, Options: options}

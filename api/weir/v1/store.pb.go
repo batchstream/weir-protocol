@@ -186,19 +186,19 @@ type MutationVisibility int32
 const (
 	// Confirm that the requested mutation semantics were applied.
 	MutationVisibility_APPLICATION_ACKNOWLEDGED MutationVisibility = 0
-	// Also confirm visibility to subsequent searches before returning success.
-	MutationVisibility_SEARCH_VISIBLE MutationVisibility = 1
+	// Also confirm visibility to subsequent normal queries before returning success.
+	MutationVisibility_QUERY_VISIBLE MutationVisibility = 1
 )
 
 // Enum value maps for MutationVisibility.
 var (
 	MutationVisibility_name = map[int32]string{
 		0: "APPLICATION_ACKNOWLEDGED",
-		1: "SEARCH_VISIBLE",
+		1: "QUERY_VISIBLE",
 	}
 	MutationVisibility_value = map[string]int32{
 		"APPLICATION_ACKNOWLEDGED": 0,
-		"SEARCH_VISIBLE":           1,
+		"QUERY_VISIBLE":            1,
 	}
 )
 
@@ -1222,10 +1222,11 @@ func (*ReadResult_Failure) isReadResult_Result() {}
 // MutationOptions applies uniformly to writes, deletes and atomic transforms.
 type MutationOptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// APPLICATION_ACKNOWLEDGED is the default. SEARCH_VISIBLE waits for backend
-	// search refresh, including for no-ops. Backends without a separate refresh
-	// satisfy visibility once the mutation is acknowledged. APPLIED with Failure
-	// retains application evidence but does not confirm visibility.
+	// APPLICATION_ACKNOWLEDGED is the default. QUERY_VISIBLE establishes
+	// visibility to subsequent normal queries, including for no-ops. Search
+	// adapters wait for refresh; backends without deferred query visibility
+	// satisfy this once the mutation is acknowledged. APPLIED with Failure
+	// retains application evidence but does not confirm query visibility.
 	Visibility    MutationVisibility `protobuf:"varint,1,opt,name=visibility,proto3,enum=weir.v1.MutationVisibility" json:"visibility,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2090,10 +2091,10 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\vNOT_STARTED\x10\x01\x12\x0f\n" +
 	"\vNOT_APPLIED\x10\x02\x12\v\n" +
 	"\aAPPLIED\x10\x03\x12\v\n" +
-	"\aUNKNOWN\x10\x04*F\n" +
+	"\aUNKNOWN\x10\x04*E\n" +
 	"\x12MutationVisibility\x12\x1c\n" +
-	"\x18APPLICATION_ACKNOWLEDGED\x10\x00\x12\x12\n" +
-	"\x0eSEARCH_VISIBLE\x10\x01*K\n" +
+	"\x18APPLICATION_ACKNOWLEDGED\x10\x00\x12\x11\n" +
+	"\rQUERY_VISIBLE\x10\x01*K\n" +
 	"\x0eProjectionMode\x12\x1f\n" +
 	"\x1bPROJECTION_MODE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aINCLUDE\x10\x01\x12\v\n" +

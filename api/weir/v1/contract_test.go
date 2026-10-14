@@ -115,7 +115,7 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	options := []fieldContract{{name: "visibility", kind: protoreflect.EnumKind}}
 	assertFields(t, messages.ByName("MutationOptions"), options)
 	visibility := File_api_weir_v1_store_proto.Enums().ByName("MutationVisibility")
-	if visibility == nil || visibility.Values().Len() != 2 || visibility.Values().Get(0).Name() != "APPLICATION_ACKNOWLEDGED" || visibility.Values().Get(0).Number() != 0 || visibility.Values().Get(1).Name() != "SEARCH_VISIBLE" || visibility.Values().Get(1).Number() != 1 {
+	if visibility == nil || visibility.Values().Len() != 2 || visibility.Values().Get(0).Name() != "APPLICATION_ACKNOWLEDGED" || visibility.Values().Get(0).Number() != 0 || visibility.Values().Get(1).Name() != "QUERY_VISIBLE" || visibility.Values().Get(1).Number() != 1 {
 		t.Fatal("mutation visibility completion conditions changed", visibility)
 	}
 }

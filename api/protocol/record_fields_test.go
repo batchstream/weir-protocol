@@ -41,7 +41,7 @@ func TestMutationFieldPolicy(t *testing.T) {
 	}
 	for _, mutation := range valid {
 		acknowledged := &pb.MutationOptions{}
-		visible := &pb.MutationOptions{Visibility: pb.MutationVisibility_SEARCH_VISIBLE}
+		visible := &pb.MutationOptions{Visibility: pb.MutationVisibility_QUERY_VISIBLE}
 		for _, options := range []*pb.MutationOptions{nil, acknowledged, visible} {
 			mutation.Options = options
 			request := mutationExecution("records", 1, mutation)
