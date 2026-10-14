@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.10.0
+go get github.com/batchstream/weir-protocol@v0.11.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -66,13 +66,15 @@ An individually received MutationResult retains its application evidence if the
 stream later fails. A submitted mutation without a result may have applied.
 Clients must never automatically replay unacknowledged mutations.
 
-`MutateRequest.wait_until_visible` applies to all mutation actions. Its default
-false value requires application acknowledgement. When true, APPLIED without a
-Failure additionally confirms visibility to subsequent searches. APPLIED with a
-Failure retains application evidence but does not confirm visibility, so replay
-is still unsafe. Search adapters wait for backend refresh; adapters without a
-separate search refresh satisfy visibility when the mutation is acknowledged.
-No-op mutations must also establish visibility when requested.
+`MutateRequest.options` carries `MutationOptions` uniformly for every action.
+Its `visibility` uses `MutationVisibility`: absent options or the zero value
+APPLICATION_ACKNOWLEDGED require application acknowledgement. SEARCH_VISIBLE
+additionally confirms visibility to subsequent searches when APPLIED has no
+Failure. APPLIED with a Failure retains application evidence but does not confirm
+visibility, so replay is still unsafe. Search adapters wait for backend refresh;
+adapters without a separate refresh satisfy visibility when the mutation is
+acknowledged. No-op mutations must also establish the requested visibility.
+Unknown option fields and undeclared visibility values are rejected.
 
 Scan uses an opaque adapter-owned filter expression and an optional typed
 Projection. Projection requires a uniform include/exclude mode
@@ -194,7 +196,7 @@ current service interface. Regeneration is byte reproducible.
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.10.0
+gh workflow run release.yml --ref main -f version=v0.11.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete
