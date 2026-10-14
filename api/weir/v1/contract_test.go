@@ -106,11 +106,17 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 		{name: "replace", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
 		{name: "delete", kind: protoreflect.MessageKind, message: "weir.v1.Empty"},
 		{name: "atomic_transform", kind: protoreflect.MessageKind, message: "weir.v1.Transform"},
-		{name: "wait_until_visible", kind: protoreflect.BoolKind},
+		{name: "options", kind: protoreflect.MessageKind, message: "weir.v1.MutationOptions"},
 	}
 	assertFields(t, messages.ByName("MutateRequest"), mutation)
-	if messages.ByName("MutateRequest").Fields().ByName("wait_until_visible").ContainingOneof() != nil {
-		t.Fatal("visibility must apply to every mutation action")
+	if messages.ByName("MutateRequest").Fields().ByName("options").ContainingOneof() != nil {
+		t.Fatal("options must apply to every mutation action")
+	}
+	options := []fieldContract{{name: "visibility", kind: protoreflect.EnumKind}}
+	assertFields(t, messages.ByName("MutationOptions"), options)
+	visibility := File_api_weir_v1_store_proto.Enums().ByName("MutationVisibility")
+	if visibility == nil || visibility.Values().Len() != 2 || visibility.Values().Get(0).Name() != "APPLICATION_ACKNOWLEDGED" || visibility.Values().Get(0).Number() != 0 || visibility.Values().Get(1).Name() != "SEARCH_VISIBLE" || visibility.Values().Get(1).Number() != 1 {
+		t.Fatal("mutation visibility completion conditions changed", visibility)
 	}
 }
 

@@ -40,8 +40,10 @@ func TestMutationFieldPolicy(t *testing.T) {
 		{Resource: "data/s:key", Action: expressionAction},
 	}
 	for _, mutation := range valid {
-		for _, waitUntilVisible := range []bool{false, true} {
-			mutation.WaitUntilVisible = waitUntilVisible
+		acknowledged := &pb.MutationOptions{}
+		visible := &pb.MutationOptions{Visibility: pb.MutationVisibility_SEARCH_VISIBLE}
+		for _, options := range []*pb.MutationOptions{nil, acknowledged, visible} {
+			mutation.Options = options
 			request := mutationExecution("records", 1, mutation)
 			if err := ValidateExecuteRequest(request); err != nil {
 				t.Fatalf("valid opaque mutation rejected: %v", err)

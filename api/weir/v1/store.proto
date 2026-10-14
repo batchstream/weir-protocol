@@ -232,6 +232,24 @@ message ReadResult {
   }
 }
 
+// MutationVisibility selects the completion condition for every mutation action.
+enum MutationVisibility {
+  // Confirm that the requested mutation semantics were applied.
+  APPLICATION_ACKNOWLEDGED = 0;
+
+  // Also confirm visibility to subsequent searches before returning success.
+  SEARCH_VISIBLE = 1;
+}
+
+// MutationOptions applies uniformly to writes, deletes and atomic transforms.
+message MutationOptions {
+  // APPLICATION_ACKNOWLEDGED is the default. SEARCH_VISIBLE waits for backend
+  // search refresh, including for no-ops. Backends without a separate refresh
+  // satisfy visibility once the mutation is acknowledged. APPLIED with Failure
+  // retains application evidence but does not confirm visibility.
+  MutationVisibility visibility = 1;
+}
+
 // MutateRequest applies one action to one resource using adapter-owned semantics.
 message MutateRequest {
   // Canonical path relative to the selected Store; no scheme or leading slash.
@@ -255,12 +273,9 @@ message MutateRequest {
     Transform atomic_transform = 6;
   }
 
-  // Wait until the applied mutation is visible to subsequent searches before
-  // returning a successful result. False requires application evidence only.
-  // APPLIED with a Failure retains application evidence but does not confirm
-  // visibility. Adapters without a separate search refresh satisfy this once
-  // the mutation is acknowledged. Applies to every action, including no-ops.
-  bool wait_until_visible = 7;
+  // Optional completion settings shared by every mutation action. Absent uses
+  // APPLICATION_ACKNOWLEDGED. Unknown option fields or enum values are invalid.
+  MutationOptions options = 7;
 }
 
 // MutationResult reports the known application outcome and any associated failure.

@@ -34,6 +34,10 @@ func validateMutationRequest(request *pb.MutateRequest) error {
 	if request == nil || !validRelativeResource(request.Resource) {
 		return fmt.Errorf("Mutate requires a canonical relative resource")
 	}
+	visibility := request.GetOptions().GetVisibility()
+	if visibility != pb.MutationVisibility_APPLICATION_ACKNOWLEDGED && visibility != pb.MutationVisibility_SEARCH_VISIBLE {
+		return fmt.Errorf("Mutate requires a declared visibility option")
+	}
 	if failure := validateMutationFields(request); failure != nil {
 		return fmt.Errorf("Mutate: %s", failure.Message)
 	}
