@@ -34,21 +34,21 @@ func TestSingleRecordValidationAndUnknownFields(t *testing.T) {
 	}
 }
 
-func TestMaximalSingleMutationAndProgramInput(t *testing.T) {
+func TestLargeMutationAndProgramInput(t *testing.T) {
 	contentType := strings.Repeat("a", 63) + "/" + strings.Repeat("b", 63)
-	document := &pb.Document{ContentType: contentType, Data: make([]byte, MaxDocument)}
+	document := &pb.Document{ContentType: contentType, Data: make([]byte, (2 << 20))}
 	action := &pb.MutateRequest_Put{Put: document}
-	mutation := &pb.MutateRequest{Resource: strings.Repeat("x", MaxResourceBytes), Action: action}
+	mutation := &pb.MutateRequest{Resource: strings.Repeat("x", 4096), Action: action}
 	request := mutationExecution(strings.Repeat("a", 63), 1, mutation)
 	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal("maximal mutation rejected", err)
 	}
-	document.Data = make([]byte, MaxDocument+1)
-	if err := ValidateExecuteRequest(request); err == nil {
-		t.Fatal("oversized document accepted")
+	document.Data = make([]byte, (2<<20)+1)
+	if err := ValidateExecuteRequest(request); err != nil {
+		t.Fatal("document beyond former limit rejected", err)
 	}
-	document.Data = make([]byte, MaxDocument)
-	program := &pb.LuaTransform{Source: []byte(strings.Repeat(" ", MaxExpression)), Input: document}
+	document.Data = make([]byte, (2 << 20))
+	program := &pb.LuaTransform{Source: []byte(strings.Repeat(" ", (16 << 10))), Input: document}
 	form := &pb.Transform_Lua{Lua: program}
 	transform := &pb.Transform{Form: form}
 	transformAction := &pb.MutateRequest_AtomicTransform{AtomicTransform: transform}
@@ -73,7 +73,7 @@ func TestRecordIndexesHaveNoLogicalCallBudget(t *testing.T) {
 			t.Fatal("invalid ordinal accepted", index)
 		}
 	}
-	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, MaxDocument)}
+	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, (2 << 20))}
 	action := &pb.MutateRequest_Put{Put: document}
 	mutation := &pb.MutateRequest{Resource: "data/s:key", Action: action}
 	request = mutationExecution("records", 1, mutation)

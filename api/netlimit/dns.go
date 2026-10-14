@@ -1,4 +1,4 @@
-// Package netlimit provides bounded standard Go DNS I/O for clients and servers.
+// Package netlimit provides owned standard Go DNS I/O for clients and servers.
 // Callers retain lifecycle, concurrency and address selection.
 package netlimit
 
@@ -8,26 +8,12 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
-
-const MaxDNSAddresses = 8
-const maxDNSReadBytes = 4098
 
 // LookupHost joins the pure-Go A/AAAA queries and closes all owned sockets before
 // returning. The caller must provide a deadline; there is no cache or worker.
 func LookupHost(ctx context.Context, base *net.Resolver, host string) ([]string, error) {
-	return LookupHostLimit(ctx, base, host, MaxDNSAddresses)
-}
-
-// LookupHostLimit uses the same owned DNS transport with an explicit answer
-// bound. Store discovery can accept larger replica sets without changing the
-// backend transports' eight-address budget.
-func LookupHostLimit(ctx context.Context, base *net.Resolver, host string, limit int) ([]string, error) {
-	if limit < 1 || limit > 128 {
-		return nil, errors.New("DNS answer bound requires 1-128")
-	}
 	if _, ok := ctx.Deadline(); !ok {
 		return nil, errors.New("DNS requires a deadline")
 	}
@@ -42,8 +28,8 @@ func LookupHostLimit(ctx context.Context, base *net.Resolver, host string, limit
 		host += "."
 	}
 	ips, err := native.LookupHost(ctx, host)
-	if err != nil || ctx.Err() != nil || transport.oversized.Load() || len(ips) == 0 || len(ips) > limit {
-		return nil, errors.New("DNS failed or answer count outside configured bound")
+	if err != nil || ctx.Err() != nil || len(ips) == 0 {
+		return nil, errors.New("DNS failed or returned no addresses")
 	}
 	return ips, nil
 }
@@ -51,22 +37,19 @@ func LookupHostLimit(ctx context.Context, base *net.Resolver, host string, limit
 // A lookup can issue A and AAAA concurrently. Cancellation closes their I/O,
 // and the resolution credit is held until LookupHost and all owned I/O end.
 type dnsTransport struct {
-	ctx       context.Context
-	base      *net.Resolver
-	mu        sync.Mutex
-	conns     map[*dnsConn]struct{}
-	active    int
-	io        sync.WaitGroup
-	oversized atomic.Bool
+	ctx   context.Context
+	base  *net.Resolver
+	mu    sync.Mutex
+	conns map[*dnsConn]struct{}
+	io    sync.WaitGroup
 }
 
 func (d *dnsTransport) dial(ctx context.Context, network, address string) (net.Conn, error) {
 	d.mu.Lock()
-	if d.ctx.Err() != nil || d.active == 2 {
+	if d.ctx.Err() != nil {
 		d.mu.Unlock()
-		return nil, errors.New("DNS I/O closed or bounded")
+		return nil, errors.New("DNS I/O closed")
 	}
-	d.active++
 	d.io.Add(1)
 	d.mu.Unlock()
 	ctx, cancel := context.WithCancel(ctx)
@@ -87,7 +70,6 @@ func (d *dnsTransport) dial(ctx context.Context, network, address string) (net.C
 		err = d.ctx.Err()
 	}
 	if err != nil {
-		d.active--
 		d.io.Done()
 		return nil, err
 	}
@@ -116,24 +98,9 @@ func (d *dnsTransport) close() {
 
 type dnsConn struct {
 	net.Conn
-	owner     *dnsTransport
-	once      sync.Once
-	err       error
-	readBytes int // net.Resolver has one reader per DNS connection.
-}
-
-func (c *dnsConn) Read(p []byte) (int, error) {
-	remaining := maxDNSReadBytes - c.readBytes
-	if remaining < 0 {
-		return 0, errors.New("DNS response byte bound")
-	}
-	n, err := c.Conn.Read(p[:min(len(p), remaining+1)])
-	c.readBytes += n
-	if c.readBytes > maxDNSReadBytes {
-		c.owner.oversized.Store(true)
-		return 0, errors.New("DNS response byte bound")
-	}
-	return n, err
+	owner *dnsTransport
+	once  sync.Once
+	err   error
 }
 
 func (c *dnsConn) Close() error {
@@ -141,7 +108,6 @@ func (c *dnsConn) Close() error {
 		c.err = c.Conn.Close()
 		c.owner.mu.Lock()
 		delete(c.owner.conns, c)
-		c.owner.active--
 		c.owner.mu.Unlock()
 		c.owner.io.Done()
 	})

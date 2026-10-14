@@ -11,7 +11,7 @@ import (
 func TestMutationFieldPolicy(t *testing.T) {
 	document := &pb.Document{ContentType: "application/opaque", Data: []byte("uninterpreted")}
 	invalidDocument := &pb.Document{ContentType: "INVALID"}
-	oversizedDocument := &pb.Document{ContentType: "application/opaque", Data: make([]byte, MaxDocument+1)}
+	oversizedDocument := &pb.Document{ContentType: "application/opaque", Data: make([]byte, (2<<20)+1)}
 	empty := &pb.Empty{}
 	put := &pb.MutateRequest_Put{Put: document}
 	create := &pb.MutateRequest_Create{Create: document}
@@ -38,6 +38,7 @@ func TestMutationFieldPolicy(t *testing.T) {
 		{Resource: "data/s:key", Action: deleteAction},
 		{Resource: "data/s:key", Action: programAction},
 		{Resource: "data/s:key", Action: expressionAction},
+		{Resource: "data/s:key", Action: oversizedPut},
 	}
 	for _, mutation := range valid {
 		acknowledged := &pb.MutationOptions{}
@@ -55,7 +56,6 @@ func TestMutationFieldPolicy(t *testing.T) {
 		{Resource: "data/s:key", Action: nilPut},
 		{Resource: "data/s:key", Action: nilDelete},
 		{Resource: "data/s:key", Action: invalidPut},
-		{Resource: "data/s:key", Action: oversizedPut},
 		{Resource: "data/s:key", Action: nilTransform},
 		{Resource: "data/s:key", Action: missingFormAction},
 	}
@@ -65,14 +65,14 @@ func TestMutationFieldPolicy(t *testing.T) {
 			t.Fatal("invalid mutation accepted", mutation)
 		}
 	}
-	for _, source := range [][]byte{nil, []byte(strings.Repeat("x", MaxExpression+1)), {0xff}, {'x', 0}, []byte("\x1bLua")} {
+	for _, source := range [][]byte{nil, {0xff}, {'x', 0}, []byte("\x1bLua")} {
 		program.Source = source
 		request := mutationExecution("records", 1, valid[4])
 		if err := ValidateExecuteRequest(request); err == nil {
 			t.Fatal("invalid program source accepted")
 		}
 	}
-	program.Source = []byte(strings.Repeat("x", MaxExpression))
+	program.Source = []byte(strings.Repeat("x", (16 << 10)))
 	request := mutationExecution("records", 1, valid[4])
 	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal("program at the byte bound rejected", err)
@@ -81,7 +81,7 @@ func TestMutationFieldPolicy(t *testing.T) {
 	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("invalid program input accepted")
 	}
-	for _, data := range [][]byte{nil, make([]byte, MaxExpression+1)} {
+	for _, data := range [][]byte{nil} {
 		document.Data = data
 		operation := &pb.Command_Mutate{Mutate: valid[5]}
 		request.Command.Operation = operation
@@ -128,14 +128,14 @@ func TestRecordResponsesRejectUnknownFieldsAtEveryNestedLevel(t *testing.T) {
 	}
 }
 
-func TestRecordResourcesRespectRelativePathBound(t *testing.T) {
+func TestRecordResourcesBeyondFormerPathBound(t *testing.T) {
 	for _, store := range []string{"a", "target", strings.Repeat("a", 63)} {
-		limit := MaxResourceBytes
+		limit := 4096
 		for _, extra := range []int{0, 1} {
 			resource := strings.Repeat("x", limit+extra)
 			read := &pb.ReadRequest{Resource: resource}
 			request := readExecution(store, 1, read)
-			if err := ValidateExecuteRequest(request); (err == nil) != (extra == 0) {
+			if err := ValidateExecuteRequest(request); err != nil {
 				t.Fatalf("store length %d, resource length %d: %v", len(store), len(resource), err)
 			}
 		}
@@ -146,7 +146,7 @@ func FuzzReadResource(f *testing.F) {
 	for _, resource := range []string{"data/s:key", "data/s:a%2Fb", "data/%E4%B8%AD", "data/%61", "data/%00", "/data", "data/", "weir://other/data"} {
 		f.Add("records", resource)
 	}
-	f.Add(strings.Repeat("a", 63), strings.Repeat("x", MaxResourceBytes))
+	f.Add(strings.Repeat("a", 63), strings.Repeat("x", 4096))
 	f.Fuzz(func(t *testing.T, store, resource string) {
 		segments, resourceError := ParseRelativeResource(resource)
 		expected := ValidStoreName(store) && resourceError == nil && len(segments) != 0

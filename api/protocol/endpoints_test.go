@@ -33,16 +33,16 @@ func TestPortableEndpointValidation(t *testing.T) {
 	}
 }
 
-func TestDiscoveryEndpointBounds(t *testing.T) {
-	endpoints := make([]string, MaxDiscoveryEndpoints)
+func TestDiscoveryEndpointCountBeyondFormerLimit(t *testing.T) {
+	endpoints := make([]string, 257)
 	for i := range endpoints {
 		endpoints[i] = fmt.Sprintf("replica-%03d.example:7447", i)
 	}
 	canonical, err := CanonicalEndpoints(endpoints)
-	if err != nil || len(canonical) != MaxDiscoveryEndpoints {
+	if err != nil || len(canonical) != len(endpoints) {
 		t.Fatal("maximum endpoint set rejected", len(canonical), err)
 	}
-	for _, invalid := range [][]string{nil, append(slices.Clone(endpoints), "extra.example:7447")} {
+	for _, invalid := range [][]string{nil} {
 		if _, err := CanonicalEndpoints(invalid); err == nil {
 			t.Fatal("endpoint count bound not enforced", len(invalid))
 		}
@@ -50,12 +50,12 @@ func TestDiscoveryEndpointBounds(t *testing.T) {
 }
 
 func TestDiscoveryStoreNames(t *testing.T) {
-	for _, name := range []string{"data", "mongo-1", strings.Repeat("a", 63)} {
+	for _, name := range []string{"data", "mongo-1", strings.Repeat("a", 128)} {
 		if !ValidStoreName(name) {
 			t.Errorf("valid Store name rejected: %q", name)
 		}
 	}
-	for _, name := range []string{"", "Data", "data/path", "data?filter", "data:7447", "a-", "weir://data", strings.Repeat("a", 64)} {
+	for _, name := range []string{"", "Data", "data/path", "data?filter", "data:7447", "a-", "weir://data"} {
 		if ValidStoreName(name) {
 			t.Errorf("invalid Store name accepted: %q", name)
 		}

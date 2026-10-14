@@ -128,18 +128,18 @@ func TestScanContinuationBindingAndBounds(t *testing.T) {
 		t.Fatal("accepted another backend dialect")
 	}
 	corrupt := bytes.Replace(token, []byte(`"checksum":"`), []byte(`"checksum":"x`), 1)
-	for _, invalid := range [][]byte{nil, append(token, ' '), corrupt, []byte(strings.Repeat("x", MaxScanToken+1)), []byte(`{"state":"broken"}`)} {
+	for _, invalid := range [][]byte{nil, append(token, ' '), corrupt, []byte(strings.Repeat("x", (32<<10)+1)), []byte(`{"state":"broken"}`)} {
 		if _, err := DecodeScanToken(invalid, "example:ordered", fingerprint); err == nil {
 			t.Fatal("accepted malformed continuation")
 		}
 	}
-	if _, err := EncodeScanToken("example:ordered", fingerprint, make([]byte, MaxScanState+1)); err == nil {
-		t.Fatal("encoded excessive native state")
+	if _, err := EncodeScanToken("example:ordered", fingerprint, make([]byte, (20<<10)+1)); err != nil {
+		t.Fatal("native state beyond former limit rejected", err)
 	}
 	if _, err := EncodeScanToken("example:ordered", fingerprint, nil); err == nil {
 		t.Fatal("encoded missing native state")
 	}
-	maximumState := make([]byte, MaxScanState)
+	maximumState := make([]byte, (20 << 10))
 	maximumToken, err := EncodeScanToken("example:ordered", fingerprint, maximumState)
 	if err != nil {
 		t.Fatal("maximum native state rejected", err)

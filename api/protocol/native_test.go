@@ -55,7 +55,7 @@ func TestOnlyNativePermitsEmptyBackendRootResource(t *testing.T) {
 	if failure := ValidateScan(scan); failure == nil {
 		t.Fatal("Scan accepted an empty resource")
 	}
-	for _, resource := range []string{"/root", "root/..", "root/%6B", "weir://other/root", strings.Repeat("x", MaxResourceBytes+1)} {
+	for _, resource := range []string{"/root", "root/..", "root/%6B", "weir://other/root"} {
 		request.Command.GetNative().Resource = resource
 		if err := ValidateExecuteRequest(request); err == nil {
 			t.Fatal("Native accepted a malformed or oversized target prefix", resource)
@@ -63,13 +63,12 @@ func TestOnlyNativePermitsEmptyBackendRootResource(t *testing.T) {
 	}
 }
 
-func TestNativeRequestBoundsAndUnknownFields(t *testing.T) {
+func TestNativeRequestRequiredAndUnknownFields(t *testing.T) {
 	document := &pb.Document{ContentType: "application/vnd.example.command", Data: []byte{1}}
 	for _, mutate := range []func(*pb.NativeRequest){
 		func(r *pb.NativeRequest) { r.Request = nil },
 		func(r *pb.NativeRequest) { r.Request.ContentType = "" },
 		func(r *pb.NativeRequest) { r.Request.ContentType = "application/json; charset=utf-8" },
-		func(r *pb.NativeRequest) { r.Request.Data = make([]byte, MaxNativeRequestBytes+1) },
 		func(r *pb.NativeRequest) { r.Request.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
 		func(r *pb.NativeRequest) { r.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
 	} {
@@ -85,22 +84,22 @@ func TestNativeRequestBoundsAndUnknownFields(t *testing.T) {
 	}
 }
 
-func TestNativeMaximumPayloadFitsEnvelope(t *testing.T) {
+func TestNativePayloadBeyondFormerFrameLimit(t *testing.T) {
 	contentType := "application/" + strings.Repeat("x", 115)
-	document := &pb.Document{ContentType: contentType, Data: make([]byte, MaxNativeRequestBytes)}
+	document := &pb.Document{ContentType: contentType, Data: make([]byte, (9<<20)+1)}
 	request := nativeExecution(document)
-	request.Command.GetNative().Resource = strings.Repeat("x", MaxResourceBytes)
+	request.Command.GetNative().Resource = strings.Repeat("x", 8192)
 	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal("maximal Native request rejected", err)
 	}
 }
 
-func TestNativeResponseMetadataIsOpaqueAndBounded(t *testing.T) {
+func TestNativeResponseMetadataIsOpaqueWithoutSizeGate(t *testing.T) {
 	for _, metadata := range []*pb.Document{
 		nil,
 		{ContentType: "application/vnd.example.response"},
 		{ContentType: "application/vnd.another.response", Data: []byte{0xff, 0}},
-		{ContentType: "application/http", Data: make([]byte, MaxNativeMetadataBytes)},
+		{ContentType: "application/http", Data: make([]byte, (3 << 20))},
 	} {
 		head := &pb.NativeHead{Metadata: metadata, BodyContentType: "application/octet-stream"}
 		value := &pb.Event_Head{Head: head}
@@ -112,7 +111,6 @@ func TestNativeResponseMetadataIsOpaqueAndBounded(t *testing.T) {
 	for _, metadata := range []*pb.Document{
 		{},
 		{ContentType: "invalid"},
-		{ContentType: "application/vnd.example.response", Data: make([]byte, MaxNativeMetadataBytes+1)},
 	} {
 		head := &pb.NativeHead{Metadata: metadata}
 		value := &pb.Event_Head{Head: head}

@@ -450,7 +450,7 @@ func (x *ResolveStoreResponse) GetCacheTtlMs() uint64 {
 	return 0
 }
 
-// ExecuteRequest binds one bounded operation to its owning Store and index.
+// ExecuteRequest binds one operation to its owning Store and index.
 type ExecuteRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Store that owns all resources; must remain identical throughout the stream.
@@ -515,7 +515,7 @@ func (x *ExecuteRequest) GetCommand() *Command {
 	return nil
 }
 
-// ExecuteResponse carries one bounded result or streaming event.
+// ExecuteResponse carries one result or streaming event.
 type ExecuteResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// One-based input record ordinal; record results arrive in input order.
@@ -571,7 +571,7 @@ func (x *ExecuteResponse) GetEvent() *Event {
 	return nil
 }
 
-// Command selects one bounded operation with incrementally delivered results.
+// Command selects one operation with incrementally delivered results.
 type Command struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Exactly one operation is required.
@@ -675,7 +675,7 @@ type Command_Mutate struct {
 }
 
 type Command_Scan struct {
-	// Read one bounded traversal page.
+	// Read one finite traversal page.
 	Scan *ScanRequest `protobuf:"bytes,3,opt,name=scan,proto3,oneof"`
 }
 
@@ -699,7 +699,7 @@ type NativeRequest struct {
 	// selects the backend root when supported by its target grammar. Native has
 	// no command, path, or parameter allowlist; backend permissions apply.
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Required opaque request document, with at most 8 MiB of payload bytes.
+	// Required opaque request document. Backend protocol limits apply.
 	// The adapter interprets content_type and data; empty data is permitted.
 	Request       *Document `protobuf:"bytes,2,opt,name=request,proto3" json:"request,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -964,7 +964,7 @@ type Document struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Required MIME media type without parameters.
 	ContentType string `protobuf:"bytes,1,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
-	// Payload bytes, bounded separately from the enclosing protobuf message.
+	// Opaque payload bytes interpreted by the selected backend.
 	Data          []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1014,7 +1014,7 @@ func (x *Document) GetData() []byte {
 	return nil
 }
 
-// Failure carries one bounded, readable description of an operation failure.
+// Failure carries one readable description of an operation failure.
 type Failure struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Required declared nonzero failure classification.
@@ -1632,13 +1632,13 @@ func (x *LuaTransform) GetInput() *Document {
 	return nil
 }
 
-// Projection selects bounded, distinct dot-separated field paths. Duplicate
+// Projection selects distinct dot-separated field paths. Duplicate
 // paths and overlapping ancestor/descendant paths are invalid.
 type Projection struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Required INCLUDE or EXCLUDE mode; mixing modes within one request is invalid.
 	Mode ProjectionMode `protobuf:"varint,1,opt,name=mode,proto3,enum=weir.v1.ProjectionMode" json:"mode,omitempty"`
-	// 1-128 paths, at most 512 bytes each and 8 KiB encoded Projection total;
+	// Nonempty field paths;
 	// no wildcard characters, control characters, or empty segments.
 	Fields        []string `protobuf:"bytes,2,rep,name=fields,proto3" json:"fields,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1699,12 +1699,12 @@ type ScanRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Canonical traversal target path relative to the selected Store.
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Optional adapter-owned filter expression, with at most 16 KiB of payload bytes.
+	// Optional adapter-owned filter expression.
 	// The adapter interprets its content type and data; absent selects all documents.
 	Filter *Document `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	// Optional explicit field selection. Absent returns complete documents.
 	Projection *Projection `protobuf:"bytes,3,opt,name=projection,proto3" json:"projection,omitempty"`
-	// Maximum documents in this page. Zero uses 128; the maximum is 256.
+	// Maximum documents in this page. Zero uses 128.
 	PageSize uint32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Opaque checkpoint from a completed page, portable across nodes serving the
 	// same Store with an equivalent backend configuration and token format.
@@ -1857,7 +1857,7 @@ func (x *ScanEnd) GetExhausted() bool {
 // NativeHead describes the native response before any body chunks are delivered.
 type NativeHead struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Optional adapter-owned response metadata, with at most 64 KiB of payload bytes.
+	// Optional adapter-owned response metadata.
 	// Its content type and bytes are opaque to the public protocol.
 	Metadata *Document `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	// MIME type of following body chunks; empty when no type was supplied.
