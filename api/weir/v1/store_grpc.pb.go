@@ -30,7 +30,7 @@ const (
 type StoreServiceClient interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error)
-	// Execute accepts bounded requests and emits indexed results incrementally.
+	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index. It is validated
 	// before execution; earlier records may have effects before a later one fails.
@@ -79,7 +79,7 @@ func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOptio
 type StoreServiceServer interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error)
-	// Execute accepts bounded requests and emits indexed results incrementally.
+	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index. It is validated
 	// before execution; earlier records may have effects before a later one fails.

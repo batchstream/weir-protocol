@@ -16,7 +16,7 @@ func TestScanProjectionValidatesUniformFieldPaths(t *testing.T) {
 		{Mode: pb.ProjectionMode_EXCLUDE, Fields: []string{"private.token", "私人.字段"}},
 		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{"a", "ab", "a-b"}},
 		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{"$field", "a.$field"}},
-		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{strings.Repeat("x", MaxProjectionFieldBytes)}},
+		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{strings.Repeat("x", 512)}},
 	}
 	for _, projection := range valid {
 		request := &pb.ScanRequest{Resource: "records", Projection: projection}
@@ -32,7 +32,7 @@ func TestScanProjectionValidatesUniformFieldPaths(t *testing.T) {
 		{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{"a", "a-b", "a.b"}},
 		{Mode: pb.ProjectionMode_EXCLUDE, Fields: []string{"profile.age", "profile"}},
 	}
-	for _, field := range []string{"", ".name", "name.", "a..b", "a.*", "a?", "a\x00b", string([]byte{0xff}), strings.Repeat("x", MaxProjectionFieldBytes+1)} {
+	for _, field := range []string{"", ".name", "name.", "a..b", "a.*", "a?", "a\x00b", string([]byte{0xff})} {
 		projection := &pb.Projection{Mode: pb.ProjectionMode_INCLUDE, Fields: []string{field}}
 		invalid = append(invalid, projection)
 	}
@@ -44,8 +44,8 @@ func TestScanProjectionValidatesUniformFieldPaths(t *testing.T) {
 	}
 }
 
-func TestScanProjectionBoundsAndUnknownFields(t *testing.T) {
-	fields := make([]string, MaxProjectionFields)
+func TestLargeScanProjectionAndUnknownFields(t *testing.T) {
+	fields := make([]string, 128)
 	for index := range fields {
 		fields[index] = fmt.Sprintf("field%d", index)
 	}
@@ -55,15 +55,15 @@ func TestScanProjectionBoundsAndUnknownFields(t *testing.T) {
 		t.Fatal("maximum field count rejected", failure)
 	}
 	projection.Fields = append(fields, "extra")
-	if failure := ValidateScan(request); failure == nil {
-		t.Fatal("excess field count accepted")
+	if failure := ValidateScan(request); failure != nil {
+		t.Fatal("projection beyond former field count rejected", failure)
 	}
 	projection.Fields = make([]string, 17)
 	for index := range projection.Fields {
 		projection.Fields[index] = fmt.Sprintf("field%d", index) + strings.Repeat("x", 490)
 	}
-	if failure := ValidateScan(request); failure == nil {
-		t.Fatal("excess projection metadata accepted")
+	if failure := ValidateScan(request); failure != nil {
+		t.Fatal("projection beyond former metadata limit rejected", failure)
 	}
 	projection.Fields = []string{"name"}
 	projection.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})

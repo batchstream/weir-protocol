@@ -16,7 +16,7 @@ func TestCanonicalRelativeResource(t *testing.T) {
 			t.Errorf("%s: %v", resource, err)
 		}
 	}
-	invalid := []string{"", "/records", "records/", "weir://mongo/db/c/s:a", "a//b", "a/..", "a/%61", "a/%2f", "a/%FF", "a/%00", "x?q=a", "x#f", strings.Repeat("a", MaxResourceBytes+1)}
+	invalid := []string{"", "/records", "records/", "weir://mongo/db/c/s:a", "a//b", "a/..", "a/%61", "a/%2f", "a/%FF", "a/%00", "x?q=a", "x#f"}
 	for _, resource := range invalid {
 		if _, err := ParseRelativeResource(resource); err == nil {
 			t.Errorf("accepted %q", resource)
@@ -49,7 +49,7 @@ func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
 	if f := validateMutationFields(mutation); f != nil {
 		t.Fatal("Core interpreted opaque expression", f)
 	}
-	for _, raw := range [][]byte{nil, make([]byte, MaxExpression+1)} {
+	for _, raw := range [][]byte{nil} {
 		doc.Data = raw
 		if f := validateMutationFields(mutation); f.GetCode() != pb.FailureCode_INVALID_ARGUMENT {
 			t.Fatal(f)
@@ -86,7 +86,7 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 			t.Fatal("accepted invalid request", copied)
 		}
 	}
-	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, MaxDocument)}
+	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, (2 << 20))}
 	value := &pb.Event_Document{Document: document}
 	event := &pb.Event{Value: value}
 	response := &pb.ExecuteResponse{Index: 1, Event: event}
@@ -99,8 +99,8 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 	}
 }
 
-func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
-	body := &pb.Document{ContentType: "application/vnd.example.native", Data: make([]byte, MaxNativeRequestBytes)}
+func TestNativeUsesOneIndexedFrame(t *testing.T) {
+	body := &pb.Document{ContentType: "application/vnd.example.native", Data: make([]byte, (8 << 20))}
 	native := &pb.NativeRequest{Resource: "records", Request: body}
 	operation := &pb.Command_Native{Native: native}
 	command := &pb.Command{Operation: operation}
@@ -113,9 +113,9 @@ func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
 		t.Fatal("Native record ordinal accepted")
 	}
 	request.Index = 1
-	body.Data = make([]byte, MaxNativeRequestBytes+1)
-	if err := ValidateExecuteRequest(request); err == nil {
-		t.Fatal("Native command envelope bytes ignored")
+	body.Data = make([]byte, (8<<20)+1)
+	if err := ValidateExecuteRequest(request); err != nil {
+		t.Fatal("Native payload beyond former byte bound rejected", err)
 	}
 	head := &pb.NativeHead{}
 	value := &pb.Event_Head{Head: head}
@@ -131,7 +131,7 @@ func TestNativeUsesOneBoundedIndexedFrame(t *testing.T) {
 }
 
 func TestEventValidationAndTypedEncoding(t *testing.T) {
-	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, MaxDocument)}
+	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, (2 << 20))}
 	value := &pb.Event_Document{Document: document}
 	event := &pb.Event{Value: value}
 	encoded, err := proto.Marshal(event)
@@ -146,12 +146,12 @@ func TestEventValidationAndTypedEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 	failure := Fail(pb.FailureCode_INTERNAL, strings.Repeat("中", 600))
-	if len(failure.Message) > 1024 || !utf8.ValidString(failure.Message) {
-		t.Fatal("failure envelope not bounded UTF8")
+	if failure.Message != strings.Repeat("中", 600) || !utf8.ValidString(failure.Message) {
+		t.Fatal("failure message changed")
 	}
 	badDocument := &pb.Document{ContentType: "invalid"}
 	badDocumentValue := &pb.Event_Document{Document: badDocument}
-	badChunkValue := &pb.Event_Chunk{Chunk: make([]byte, NativeChunk+1)}
+	badChunkValue := &pb.Event_Chunk{}
 	badEnd := &pb.NativeEnd{Completion: pb.NativeCompletion(99)}
 	badEndValue := &pb.Event_NativeEnd{NativeEnd: badEnd}
 	incomplete := &pb.NativeEnd{Completion: pb.NativeCompletion_RESPONSE_INCOMPLETE}

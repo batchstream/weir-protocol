@@ -6,19 +6,14 @@ import (
 	"unicode/utf8"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
-	"google.golang.org/protobuf/proto"
 )
-
-const MaxProjectionFields = 128
-const MaxProjectionFieldBytes = 512
-const MaxProjectionBytes = 8 << 10
 
 func validateProjection(projection *pb.Projection) *pb.Failure {
 	if projection == nil {
 		return nil
 	}
-	if projection.Mode != pb.ProjectionMode_INCLUDE && projection.Mode != pb.ProjectionMode_EXCLUDE || len(projection.Fields) == 0 || len(projection.Fields) > MaxProjectionFields || proto.Size(projection) > MaxProjectionBytes {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "Projection requires one mode and bounded nonempty fields")
+	if projection.Mode != pb.ProjectionMode_INCLUDE && projection.Mode != pb.ProjectionMode_EXCLUDE || len(projection.Fields) == 0 {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "Projection requires one mode and nonempty fields")
 	}
 	fields := make(map[string]struct{}, len(projection.Fields))
 	for _, field := range projection.Fields {
@@ -43,7 +38,7 @@ func validateProjection(projection *pb.Projection) *pb.Failure {
 }
 
 func validProjectionField(field string) bool {
-	if field == "" || len(field) > MaxProjectionFieldBytes || !utf8.ValidString(field) || strings.ContainsAny(field, "*?") {
+	if field == "" || !utf8.ValidString(field) || strings.ContainsAny(field, "*?") {
 		return false
 	}
 	for _, segment := range strings.Split(field, ".") {

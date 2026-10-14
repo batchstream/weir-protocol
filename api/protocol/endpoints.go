@@ -11,17 +11,16 @@ import (
 )
 
 const (
-	MaxDiscoveryEndpoints = 128
-	MaxDiscoveryCacheTTL  = 30 * time.Second
+	MaxDiscoveryCacheTTL = 30 * time.Second
 )
 
 func ValidStoreName(name string) bool {
-	return len(name) <= 63 && storePattern.MatchString(name)
+	return storePattern.MatchString(name)
 }
 
 // CanonicalEndpoint accepts portable IP or DNS host:port addresses without I/O.
 func CanonicalEndpoint(value string) (string, error) {
-	if len(value) > 260 || strings.ContainsAny(value, "/@?#%\\ \t\r\n") {
+	if strings.ContainsAny(value, "/@?#%\\ \t\r\n") {
 		return "", errors.New("invalid discovery endpoint")
 	}
 	host, port, err := net.SplitHostPort(value)
@@ -55,8 +54,8 @@ func CanonicalEndpoint(value string) (string, error) {
 }
 
 func CanonicalEndpoints(input []string) ([]string, error) {
-	if len(input) < 1 || len(input) > MaxDiscoveryEndpoints {
-		return nil, errors.New("discovery requires 1-128 endpoints")
+	if len(input) < 1 {
+		return nil, errors.New("discovery requires at least one endpoint")
 	}
 	out := make([]string, 0, len(input))
 	for _, value := range input {

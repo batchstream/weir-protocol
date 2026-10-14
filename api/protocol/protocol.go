@@ -13,29 +13,21 @@ import (
 	"unicode/utf8"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-const (
-	MaxDocument             = 2 << 20
-	MaxCommandBytes         = 9 << 20
-	MaxExecuteRequestBytes  = MaxCommandBytes + 128
-	MaxExecuteResponseBytes = MaxEvent + 64
-	MaxEvent                = MaxDocument + (8 << 10)
-	MaxResourceBytes        = 4096
-	MaxExpression           = 16 << 10
-	MaxScanFilterBytes      = 16 << 10
-)
+// MaxTransportMessageBytes is the largest message length representable on this Go platform.
+// Backend protocol limits and actual process capacity govern business payloads.
+const MaxTransportMessageBytes = int(^uint(0) >> 1)
 
-var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9]){0,62}$`)
+var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9])*$`)
 var mediaPattern = regexp.MustCompile(`^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$`)
 
 // ParseRelativeResource validates a canonical Store-relative path and returns its
 // decoded segments. Store identity is supplied separately by the request envelope.
 func ParseRelativeResource(resource string) ([]string, error) {
-	if resource == "" || len(resource) > MaxResourceBytes {
-		return nil, fmt.Errorf("missing or oversized relative resource")
+	if resource == "" {
+		return nil, fmt.Errorf("missing or invalid relative resource")
 	}
 	pieces := strings.Split(resource, "/")
 	segments := make([]string, len(pieces))
@@ -81,12 +73,7 @@ func unescapedSegmentByte(value byte) bool {
 }
 
 func Fail(code pb.FailureCode, message string) *pb.Failure {
-	if len(message) > 1024 {
-		message = message[:1024]
-		for !utf8.ValidString(message) && len(message) > 0 {
-			message = message[:len(message)-1]
-		}
-	}
+
 	f := &pb.Failure{Code: code, Message: message}
 	return f
 }
@@ -163,13 +150,12 @@ func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
 			lua := transform.Lua
 			if lua == nil ||
 				len(lua.Source) == 0 ||
-				len(lua.Source) > MaxExpression ||
 				!utf8.Valid(lua.Source) ||
 				strings.IndexByte(string(lua.Source), 0) >= 0 ||
 				strings.HasPrefix(string(lua.Source), "\x1bLua") {
-				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized Lua transform")
+				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or invalid Lua transform")
 			}
-			if lua.Input != nil && !validDocument(lua.Input, MaxDocument) {
+			if lua.Input != nil && !validDocument(lua.Input) {
 				return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
 			}
 			return nil
@@ -177,8 +163,8 @@ func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
 			if transform == nil {
 				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing transform")
 			}
-			if transform.BackendExpression == nil || len(transform.BackendExpression.Data) == 0 || len(transform.BackendExpression.Data) > MaxExpression {
-				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized backend expression")
+			if transform.BackendExpression == nil || len(transform.BackendExpression.Data) == 0 {
+				return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or invalid backend expression")
 			}
 			document = transform.BackendExpression
 		default:
@@ -187,13 +173,13 @@ func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
 	default:
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or unknown action")
 	}
-	if !validDocument(document, MaxDocument) {
+	if !validDocument(document) {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid document envelope")
 	}
 	return nil
 }
 
-func validMedia(s string) bool { return len(s) <= 127 && mediaPattern.MatchString(s) }
+func validMedia(s string) bool { return mediaPattern.MatchString(s) }
 
 func ValidateScan(req *pb.ScanRequest) *pb.Failure {
 	if req == nil || hasUnknown(req.ProtoReflect()) {
@@ -203,17 +189,15 @@ func ValidateScan(req *pb.ScanRequest) *pb.Failure {
 }
 
 func validateScan(req *pb.ScanRequest) *pb.Failure {
-	if req == nil || proto.Size(req) > MaxExecuteRequestBytes {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or oversized Scan")
+	if req == nil {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or invalid Scan")
 	}
 	if !validRelativeResource(req.Resource) {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Scan relative resource")
 	}
-	if req.PageSize > MaxScanPageSize || len(req.ContinuationToken) > MaxScanToken {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "Scan page size or continuation exceeds bound")
-	}
-	if d := req.Filter; d != nil && (!validMedia(d.ContentType) || len(d.Data) == 0 || len(d.Data) > MaxScanFilterBytes) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid or oversized Scan filter")
+
+	if d := req.Filter; d != nil && (!validMedia(d.ContentType) || len(d.Data) == 0) {
+		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Scan filter")
 	}
 	return validateProjection(req.Projection)
 }
@@ -229,7 +213,7 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 	return end
 }
 
-// ValidateExecuteRequest validates one bounded operation without retaining stream
+// ValidateExecuteRequest validates one operation without retaining stream
 // state. Callers enforce a fixed Store/kind and consecutive indexes across requests.
 func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 	if req == nil || !ValidStoreName(req.StoreName) || req.Index == 0 {
@@ -238,8 +222,8 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 	if err := validateCommand(req.Command); err != nil {
 		return err
 	}
-	if proto.Size(req) > MaxExecuteRequestBytes || hasUnknown(req.ProtoReflect()) {
-		return fmt.Errorf("invalid Execute request fields or byte bound")
+	if hasUnknown(req.ProtoReflect()) {
+		return fmt.Errorf("invalid Execute request fields")
 	}
 	switch req.Command.Operation.(type) {
 	case *pb.Command_Read, *pb.Command_Mutate:
@@ -258,7 +242,7 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 // recursively. Stream consumers enforce the expected event kind, result index sequence,
 // and terminal RPC evidence. Missing or unrecognized event variants remain invalid.
 func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
-	if response == nil || response.Index == 0 || response.Index == math.MaxUint64 || proto.Size(response) > MaxExecuteResponseBytes || hasUnknown(response.ProtoReflect()) {
+	if response == nil || response.Index == 0 || response.Index == math.MaxUint64 || hasUnknown(response.ProtoReflect()) {
 		return fmt.Errorf("invalid Execute response envelope")
 	}
 	if err := ValidateEvent(response.Event); err != nil {
@@ -287,8 +271,8 @@ func ValidateCommand(command *pb.Command) error {
 }
 
 func validateCommand(command *pb.Command) error {
-	if command == nil || command.Operation == nil || proto.Size(command) > MaxCommandBytes {
-		return fmt.Errorf("invalid command fields or byte bound")
+	if command == nil || command.Operation == nil {
+		return fmt.Errorf("invalid command fields")
 	}
 	var failure *pb.Failure
 	switch operation := command.Operation.(type) {
@@ -322,7 +306,7 @@ func validateCommand(command *pb.Command) error {
 }
 
 func validRelativeResource(resource string) bool {
-	if resource == "" || len(resource) > MaxResourceBytes {
+	if resource == "" {
 		return false
 	}
 	for {
@@ -382,10 +366,10 @@ func hasUnknown(message protoreflect.Message) bool {
 	return unknown
 }
 
-// ValidateEvent checks known event semantics, fields and total bytes.
+// ValidateEvent checks known event semantics and fields.
 func ValidateEvent(event *pb.Event) error {
-	if event == nil || event.Value == nil || proto.Size(event) > MaxEvent || hasUnknown(event.ProtoReflect()) {
-		return fmt.Errorf("invalid event fields or byte bound")
+	if event == nil || event.Value == nil || hasUnknown(event.ProtoReflect()) {
+		return fmt.Errorf("invalid event fields")
 	}
 	valid := false
 	switch value := event.Value.(type) {
@@ -403,25 +387,25 @@ func ValidateEvent(event *pb.Event) error {
 		if value == nil {
 			break
 		}
-		valid = validDocument(value.Document, MaxDocument)
+		valid = validDocument(value.Document)
 	case *pb.Event_Head:
 		if value == nil {
 			break
 		}
 		head := value.Head
-		valid = head != nil && (head.BodyContentType == "" || validMedia(head.BodyContentType)) && (head.Metadata == nil || validDocument(head.Metadata, MaxNativeMetadataBytes))
+		valid = head != nil && (head.BodyContentType == "" || validMedia(head.BodyContentType)) && (head.Metadata == nil || validDocument(head.Metadata))
 	case *pb.Event_Chunk:
 		if value == nil {
 			break
 		}
-		valid = len(value.Chunk) > 0 && len(value.Chunk) <= NativeChunk
+		valid = len(value.Chunk) > 0
 	case *pb.Event_ScanEnd:
 		if value == nil {
 			break
 		}
 		end := value.ScanEnd
 		if end != nil {
-			valid = validFailure(end.Failure) && len(end.NextContinuationToken) <= MaxScanToken
+			valid = validFailure(end.Failure)
 			if end.Failure == nil {
 				valid = valid && end.Exhausted != (len(end.NextContinuationToken) != 0)
 			} else {
@@ -449,8 +433,8 @@ func ValidateEvent(event *pb.Event) error {
 }
 
 func validFailure(failure *pb.Failure) bool {
-	return failure == nil || failure.Code >= pb.FailureCode_INVALID_ARGUMENT && failure.Code <= pb.FailureCode_INTERNAL && len(failure.Message) <= 1024 && utf8.ValidString(failure.Message)
+	return failure == nil || failure.Code >= pb.FailureCode_INVALID_ARGUMENT && failure.Code <= pb.FailureCode_INTERNAL && utf8.ValidString(failure.Message)
 }
-func validDocument(document *pb.Document, limit int) bool {
-	return document != nil && validMedia(document.ContentType) && len(document.Data) <= limit
+func validDocument(document *pb.Document) bool {
+	return document != nil && validMedia(document.ContentType)
 }

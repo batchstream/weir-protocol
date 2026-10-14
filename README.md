@@ -1,6 +1,6 @@
 # Weir public protocol
 
-Shared public schemas, generated Go types, validation, and bounded DNS helpers for
+Shared public schemas, generated Go types, validation, and owned DNS helpers for
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
@@ -14,7 +14,7 @@ It contains no peer discovery protocol, server lifecycle, backend adapter, or SD
 - `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
   `Execute` for Read, Mutate, Scan, and Native.
 - `api/protocol`: common envelope, endpoint, resource and scan validation.
-- `api/netlimit`: bounded standard Go DNS transport.
+- `api/netlimit`: standard Go DNS transport with joined cancellation.
 
 The public schema lives in `api/weir/v1/store.proto`. Go imports and `go_package` use
 `github.com/batchstream/weir-protocol`. Servers and SDKs consume the module's
@@ -26,22 +26,22 @@ Weir server repository.
 Execute selects one Store and operation kind for its lifetime. Each Read or Mutate
 request carries one record. Servers aggregate admitted records into database
 batches; clients send and consume incrementally without collecting a wire batch.
-There is no item or byte bound on the total call. Documents are bounded at 2 MiB;
-Native carries a required Document request bounded at 8 MiB of data, within the
-9 MiB Command limit. NativeHead carries optional Document metadata bounded at
-64 KiB of data and a content type for subsequent chunks. Request and metadata
-bytes are opaque to the public protocol. Their content types select adapter-owned
+There is no Weir-imposed item or payload-size limit on business calls or individual
+records. Backend protocols govern accepted documents and commands; gRPC carries
+one request or event per message. Native carries a required opaque Document.
+NativeHead carries optional opaque metadata and a content type for subsequent
+body chunks. Request and metadata bytes are opaque to the public protocol. Their content types select adapter-owned
 formats; new adapters need no protobuf fields or schema changes. Empty request
 data is permitted. Unknown valid content types are left to the selected adapter.
 
 Each request is validated before execution. Earlier requests may have effects
 when a later request fails validation. The first record index is 1; every later
 request advances it by one. UINT64_MAX is invalid. Every record produces one
-bounded ExecuteResponse with its ordinal and typed result, in input order.
+ExecuteResponse with its ordinal and typed result, in input order.
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
-validators check each envelope, nested fields, and bounds. Requests and responses reject unknown
+validators check each envelope and nested fields. Requests and responses reject unknown
 fields throughout the message tree. Responses require declared result/event
-variants, enum values and valid completion evidence within the byte bounds.
+variants, enum values and valid completion evidence under the current schema.
 
 ReadResult.missing confirms document absence after a successful read.
 TARGET_NOT_FOUND reports a required adapter-owned target that does not exist; it is
@@ -49,8 +49,7 @@ an individual Failure, not a missing document result.
 Clients can consume results incrementally; SDK convenience collectors may retain
 results at the caller's request. Each response confirms one record.
 
-Store names and resource paths are separate fields. Resource paths are bounded
-at 4096 encoded bytes and use canonical percent-encoded segments without a scheme
+Store names and resource paths are separate fields. Resource paths use canonical percent-encoded segments without a scheme
 or leading slash. `ParseRelativeResource` validates and decodes these paths;
 `EncodeSegment` constructs individual segments. Native alone permits an empty
 resource for backend-root operations. Nonempty Native resources remain canonical
@@ -78,7 +77,7 @@ Unknown option fields and undeclared visibility values are rejected.
 
 Scan uses an opaque adapter-owned filter expression and an optional typed
 Projection. Projection requires a uniform include/exclude mode
-and nonempty bounded dot-separated field paths; duplicate, ancestor-overlapping,
+and nonempty dot-separated field paths; duplicate, ancestor-overlapping,
 control characters and wildcard paths are invalid. Literal field names such as
 `$field` are allowed by the protocol; adapters enforce their own field rules. An absent Projection returns full
 documents. The projection participates in traversal identity.
@@ -99,7 +98,7 @@ Scan and Native accept one Command at index 1, followed by client half-close, an
 emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
 ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained when
 a later RPC error occurs. Document.content_type identifies the adapter-owned payload format;
-read requests do not negotiate a different representation. Documents remain bounded at 2 MiB; streams preserve
+read requests do not negotiate a different representation. Backend document limits apply; streams preserve
 incremental consumption for Scan and Native responses. A Scan continuation is
 bound to its Store, backend profile, and traversal settings. Its checksum detects
 corruption only and provides no authentication or authorization. Requests still

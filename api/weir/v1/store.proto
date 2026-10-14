@@ -14,7 +14,7 @@ service StoreService {
   // ResolveStore returns the current endpoints for one configured Store.
   rpc ResolveStore(ResolveStoreRequest) returns (ResolveStoreResponse);
 
-  // Execute accepts bounded requests and emits indexed results incrementally.
+  // Execute accepts requests and emits indexed results incrementally.
   // A stream selects one Store and operation kind. Each Read or Mutate request
   // carries one record with a consecutive one-based index. It is validated
   // before execution; earlier records may have effects before a later one fails.
@@ -45,7 +45,7 @@ message ResolveStoreResponse {
   uint64 cache_ttl_ms = 3;
 }
 
-// ExecuteRequest binds one bounded operation to its owning Store and index.
+// ExecuteRequest binds one operation to its owning Store and index.
 message ExecuteRequest {
   // Store that owns all resources; must remain identical throughout the stream.
   string store_name = 1;
@@ -58,7 +58,7 @@ message ExecuteRequest {
   Command command = 3;
 }
 
-// ExecuteResponse carries one bounded result or streaming event.
+// ExecuteResponse carries one result or streaming event.
 message ExecuteResponse {
   // One-based input record ordinal; record results arrive in input order.
   // Every input record has exactly one result. Scan and Native events all use 1.
@@ -68,7 +68,7 @@ message ExecuteResponse {
   Event event = 2;
 }
 
-// Command selects one bounded operation with incrementally delivered results.
+// Command selects one operation with incrementally delivered results.
 message Command {
   // Exactly one operation is required.
   oneof operation {
@@ -78,7 +78,7 @@ message Command {
     // Mutate one resource and return its indexed MutationResult.
     MutateRequest mutate = 2;
 
-    // Read one bounded traversal page.
+    // Read one finite traversal page.
     ScanRequest scan = 3;
 
     // Execute an adapter-owned operation with an opaque request body.
@@ -93,7 +93,7 @@ message NativeRequest {
   // no command, path, or parameter allowlist; backend permissions apply.
   string resource = 1;
 
-  // Required opaque request document, with at most 8 MiB of payload bytes.
+  // Required opaque request document. Backend protocol limits apply.
   // The adapter interprets content_type and data; empty data is permitted.
   Document request = 2;
 }
@@ -133,7 +133,7 @@ message Document {
   // Required MIME media type without parameters.
   string content_type = 1;
 
-  // Payload bytes, bounded separately from the enclosing protobuf message.
+  // Opaque payload bytes interpreted by the selected backend.
   bytes data = 2;
 }
 
@@ -202,7 +202,7 @@ enum MutationOutcome {
   UNKNOWN = 4;
 }
 
-// Failure carries one bounded, readable description of an operation failure.
+// Failure carries one readable description of an operation failure.
 message Failure {
   // Required declared nonzero failure classification.
   FailureCode code = 1;
@@ -330,13 +330,13 @@ enum ProjectionMode {
   EXCLUDE = 2;
 }
 
-// Projection selects bounded, distinct dot-separated field paths. Duplicate
+// Projection selects distinct dot-separated field paths. Duplicate
 // paths and overlapping ancestor/descendant paths are invalid.
 message Projection {
   // Required INCLUDE or EXCLUDE mode; mixing modes within one request is invalid.
   ProjectionMode mode = 1;
 
-  // 1-128 paths, at most 512 bytes each and 8 KiB encoded Projection total;
+  // Nonempty field paths;
   // no wildcard characters, control characters, or empty segments.
   repeated string fields = 2;
 }
@@ -351,14 +351,14 @@ message ScanRequest {
   // Canonical traversal target path relative to the selected Store.
   string resource = 1;
 
-  // Optional adapter-owned filter expression, with at most 16 KiB of payload bytes.
+  // Optional adapter-owned filter expression.
   // The adapter interprets its content type and data; absent selects all documents.
   Document filter = 2;
 
   // Optional explicit field selection. Absent returns complete documents.
   Projection projection = 3;
 
-  // Maximum documents in this page. Zero uses 128; the maximum is 256.
+  // Maximum documents in this page. Zero uses 128.
   uint32 page_size = 4;
 
   // Opaque checkpoint from a completed page, portable across nodes serving the
@@ -402,7 +402,7 @@ enum NativeCompletion {
 
 // NativeHead describes the native response before any body chunks are delivered.
 message NativeHead {
-  // Optional adapter-owned response metadata, with at most 64 KiB of payload bytes.
+  // Optional adapter-owned response metadata.
   // Its content type and bytes are opaque to the public protocol.
   Document metadata = 1;
 

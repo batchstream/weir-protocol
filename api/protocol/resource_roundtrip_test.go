@@ -32,12 +32,9 @@ func FuzzResourceSegmentRoundTrip(f *testing.F) {
 		f.Add(input)
 	}
 	f.Fuzz(func(t *testing.T, input string) {
-		if len(input) > MaxResourceBytes {
-			t.Skip()
-		}
 		encoded := EncodeSegment(input)
 		resource := encoded
-		expected := input != "" && input != "." && input != ".." && utf8.ValidString(input) && len(resource) <= MaxResourceBytes
+		expected := input != "" && input != "." && input != ".." && utf8.ValidString(input)
 		for _, value := range input {
 			expected = expected && !unicode.IsControl(value)
 		}

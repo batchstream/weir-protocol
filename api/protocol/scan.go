@@ -13,9 +13,6 @@ import (
 )
 
 const DefaultScanPageSize = 128
-const MaxScanPageSize = 256
-const MaxScanToken = 32 << 10
-const MaxScanState = 20 << 10
 
 const scanTokenVersion = 1
 
@@ -26,7 +23,7 @@ func ScanPageSize(request *pb.ScanRequest) uint64 {
 	return uint64(request.PageSize)
 }
 
-// Continuations carry bounded native backend state. The checksum detects
+// Continuations carry native backend state. The checksum detects
 // corruption only; they provide no authentication or authorization.
 type scanContinuation struct {
 	Version     uint32 `json:"version"`
@@ -76,23 +73,21 @@ func appendScanField(raw []byte, name string, value []byte) []byte {
 }
 
 func EncodeScanToken(backend, fingerprint string, state []byte) ([]byte, error) {
-	if len(state) == 0 || len(state) > MaxScanState {
-		return nil, errors.New("Scan continuation state exceeds bound")
+	if len(state) == 0 {
+		return nil, errors.New("empty Scan continuation state")
 	}
 	value := scanContinuation{Version: scanTokenVersion, Backend: backend, Fingerprint: fingerprint, State: state}
 	raw, _ := json.Marshal(value)
 	sum := sha256.Sum256(raw)
 	value.Checksum = hex.EncodeToString(sum[:])
 	raw, _ = json.Marshal(value)
-	if len(raw) > MaxScanToken {
-		return nil, errors.New("Scan continuation exceeds bound")
-	}
+
 	return raw, nil
 }
 
 func DecodeScanToken(token []byte, backend, fingerprint string) ([]byte, error) {
-	if len(token) == 0 || len(token) > MaxScanToken {
-		return nil, errors.New("invalid Scan continuation size")
+	if len(token) == 0 {
+		return nil, errors.New("empty Scan continuation")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(token))
 	decoder.DisallowUnknownFields()
@@ -104,7 +99,7 @@ func DecodeScanToken(token []byte, backend, fingerprint string) ([]byte, error) 
 		return nil, errors.New("unsupported Scan continuation version")
 	}
 	canonical, _ := json.Marshal(value)
-	if !bytes.Equal(canonical, token) || value.Backend != backend || value.Fingerprint != fingerprint || len(value.State) == 0 || len(value.State) > MaxScanState {
+	if !bytes.Equal(canonical, token) || value.Backend != backend || value.Fingerprint != fingerprint || len(value.State) == 0 {
 		return nil, errors.New("Scan continuation does not match request")
 	}
 	checksum := value.Checksum
