@@ -237,16 +237,17 @@ enum MutationVisibility {
   // Confirm that the requested mutation semantics were applied.
   APPLICATION_ACKNOWLEDGED = 0;
 
-  // Also confirm visibility to subsequent searches before returning success.
-  SEARCH_VISIBLE = 1;
+  // Also confirm visibility to subsequent normal queries before returning success.
+  QUERY_VISIBLE = 1;
 }
 
 // MutationOptions applies uniformly to writes, deletes and atomic transforms.
 message MutationOptions {
-  // APPLICATION_ACKNOWLEDGED is the default. SEARCH_VISIBLE waits for backend
-  // search refresh, including for no-ops. Backends without a separate refresh
-  // satisfy visibility once the mutation is acknowledged. APPLIED with Failure
-  // retains application evidence but does not confirm visibility.
+  // APPLICATION_ACKNOWLEDGED is the default. QUERY_VISIBLE establishes
+  // visibility to subsequent normal queries, including for no-ops. Search
+  // adapters wait for refresh; backends without deferred query visibility
+  // satisfy this once the mutation is acknowledged. APPLIED with Failure
+  // retains application evidence but does not confirm query visibility.
   MutationVisibility visibility = 1;
 }
 
