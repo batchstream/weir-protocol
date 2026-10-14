@@ -9,8 +9,6 @@ package weirv1
 import (
 	context "context"
 	grpc "google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -20,7 +18,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	StoreService_ResolveStore_FullMethodName = "/weir.v1.StoreService/ResolveStore"
-	StoreService_ExecuteV2_FullMethodName    = "/weir.v1.StoreService/ExecuteV2"
+	StoreService_Execute_FullMethodName      = "/weir.v1.StoreService/Execute"
 )
 
 // StoreServiceClient is the client API for StoreService service.
@@ -32,9 +30,7 @@ const (
 type StoreServiceClient interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error)
-	// ExecuteV2 accepts bounded requests and emits indexed results incrementally.
-	// This explicit contract version adds mutation visibility and unrestricted
-	// Native operations. The earlier Execute RPC is no longer served.
+	// Execute accepts bounded requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index. It is validated
 	// before execution; earlier records may have effects before a later one fails.
@@ -44,7 +40,7 @@ type StoreServiceClient interface {
 	// Never automatically replay mutations without individual application evidence.
 	// Scan and Native accept exactly one request with index 1 followed by half-close.
 	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-	ExecuteV2(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
+	Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
 }
 
 type storeServiceClient struct {
@@ -66,9 +62,9 @@ func (c *storeServiceClient) ResolveStore(ctx context.Context, in *ResolveStoreR
 	return out, nil
 }
 
-func (c *storeServiceClient) ExecuteV2(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error) {
+func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StoreService_ServiceDesc.Streams[0], StoreService_ExecuteV2_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StoreService_ServiceDesc.Streams[0], StoreService_Execute_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -76,21 +72,14 @@ func (c *storeServiceClient) ExecuteV2(ctx context.Context, opts ...grpc.CallOpt
 	return x, nil
 }
 
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StoreService_ExecuteV2Client = grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse]
-
 // StoreServiceServer is the server API for StoreService service.
-// All implementations must embed UnimplementedStoreServiceServer
-// for forward compatibility.
 //
 // StoreService discovers Store endpoints and executes requests on their owners.
 // Initialize through ResolveStore, then connect directly to a returned endpoint.
 type StoreServiceServer interface {
 	// ResolveStore returns the current endpoints for one configured Store.
 	ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error)
-	// ExecuteV2 accepts bounded requests and emits indexed results incrementally.
-	// This explicit contract version adds mutation visibility and unrestricted
-	// Native operations. The earlier Execute RPC is no longer served.
+	// Execute accepts bounded requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index. It is validated
 	// before execution; earlier records may have effects before a later one fails.
@@ -100,44 +89,12 @@ type StoreServiceServer interface {
 	// Never automatically replay mutations without individual application evidence.
 	// Scan and Native accept exactly one request with index 1 followed by half-close.
 	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-	ExecuteV2(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
-	mustEmbedUnimplementedStoreServiceServer()
-}
-
-// UnimplementedStoreServiceServer must be embedded to have
-// forward compatible implementations.
-//
-// NOTE: this should be embedded by value instead of pointer to avoid a nil
-// pointer dereference when methods are called.
-type UnimplementedStoreServiceServer struct{}
-
-func (UnimplementedStoreServiceServer) ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ResolveStore not implemented")
-}
-func (UnimplementedStoreServiceServer) ExecuteV2(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method ExecuteV2 not implemented")
-}
-func (UnimplementedStoreServiceServer) mustEmbedUnimplementedStoreServiceServer() {}
-func (UnimplementedStoreServiceServer) testEmbeddedByValue()                      {}
-
-// UnsafeStoreServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to StoreServiceServer will
-// result in compilation errors.
-type UnsafeStoreServiceServer interface {
-	mustEmbedUnimplementedStoreServiceServer()
+	Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
 }
 
 func RegisterStoreServiceServer(s grpc.ServiceRegistrar, srv StoreServiceServer) {
-	// If the following call pancis, it indicates UnimplementedStoreServiceServer was
-	// embedded by pointer and is nil.  This will cause panics if an
-	// unimplemented method is ever invoked, so we test this at initialization
-	// time to prevent it from happening at runtime later due to I/O.
-	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
-		t.testEmbeddedByValue()
-	}
 	s.RegisterService(&StoreService_ServiceDesc, srv)
 }
-
 func _StoreService_ResolveStore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ResolveStoreRequest)
 	if err := dec(in); err != nil {
@@ -156,13 +113,10 @@ func _StoreService_ResolveStore_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StoreService_ExecuteV2_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _StoreService_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
 	serverStream := &grpc.GenericServerStream[ExecuteRequest, ExecuteResponse]{ServerStream: stream}
-	return srv.(StoreServiceServer).ExecuteV2(serverStream)
+	return srv.(StoreServiceServer).Execute(serverStream)
 }
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StoreService_ExecuteV2Server = grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]
 
 // StoreService_ServiceDesc is the grpc.ServiceDesc for StoreService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -178,8 +132,8 @@ var StoreService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "ExecuteV2",
-			Handler:       _StoreService_ExecuteV2_Handler,
+			StreamName:    "Execute",
+			Handler:       _StoreService_Execute_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

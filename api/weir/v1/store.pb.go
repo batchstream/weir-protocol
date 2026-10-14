@@ -22,8 +22,8 @@ const (
 )
 
 // FailureCode classifies operation failures independently of backend error types.
-// Future positive codes are opaque generic failures. Clients retain the numeric
-// code and separate application/transport evidence without inferring retry safety.
+// Only declared nonzero values are valid. Failure classification never overrides
+// the separate application/transport evidence or establishes retry safety.
 type FailureCode int32
 
 const (
@@ -968,7 +968,7 @@ func (x *Document) GetData() []byte {
 // Failure carries one bounded, readable description of an operation failure.
 type Failure struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Required positive failure classification; unknown positive values are valid.
+	// Required declared nonzero failure classification.
 	Code FailureCode `protobuf:"varint,1,opt,name=code,proto3,enum=weir.v1.FailureCode" json:"code,omitempty"`
 	// UTF-8 diagnostic text; clients must use code for programmatic decisions.
 	Message       string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
@@ -1610,9 +1610,8 @@ type ScanRequest struct {
 	Projection *Projection `protobuf:"bytes,3,opt,name=projection,proto3" json:"projection,omitempty"`
 	// Maximum documents in this page. Zero uses 128; the maximum is 256.
 	PageSize uint32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Opaque versioned checkpoint from a completed page, portable across nodes
-	// serving the same Store with an equivalent backend configuration. During a
-	// rolling upgrade, readers retain its format for the advertised validity.
+	// Opaque checkpoint from a completed page, portable across nodes serving the
+	// same Store with an equivalent backend configuration and token format.
 	// Tokens detect corruption only; they are not authentication or authorization.
 	ContinuationToken []byte `protobuf:"bytes,5,opt,name=continuation_token,json=continuationToken,proto3" json:"continuation_token,omitempty"`
 	unknownFields     protoimpl.UnknownFields
@@ -2001,10 +2000,10 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\x1dNATIVE_COMPLETION_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12NATIVE_NOT_STARTED\x10\x01\x12\x15\n" +
 	"\x11RESPONSE_COMPLETE\x10\x02\x12\x17\n" +
-	"\x13RESPONSE_INCOMPLETE\x10\x032\x9f\x01\n" +
+	"\x13RESPONSE_INCOMPLETE\x10\x032\x9d\x01\n" +
 	"\fStoreService\x12K\n" +
-	"\fResolveStore\x12\x1c.weir.v1.ResolveStoreRequest\x1a\x1d.weir.v1.ResolveStoreResponse\x12B\n" +
-	"\tExecuteV2\x12\x17.weir.v1.ExecuteRequest\x1a\x18.weir.v1.ExecuteResponse(\x010\x01B9Z7github.com/batchstream/weir-protocol/api/weir/v1;weirv1b\x06proto3"
+	"\fResolveStore\x12\x1c.weir.v1.ResolveStoreRequest\x1a\x1d.weir.v1.ResolveStoreResponse\x12@\n" +
+	"\aExecute\x12\x17.weir.v1.ExecuteRequest\x1a\x18.weir.v1.ExecuteResponse(\x010\x01B9Z7github.com/batchstream/weir-protocol/api/weir/v1;weirv1b\x06proto3"
 
 var (
 	file_api_weir_v1_store_proto_rawDescOnce sync.Once
@@ -2083,9 +2082,9 @@ var file_api_weir_v1_store_proto_depIdxs = []int32{
 	3,  // 32: weir.v1.NativeEnd.completion:type_name -> weir.v1.NativeCompletion
 	13, // 33: weir.v1.NativeEnd.failure:type_name -> weir.v1.Failure
 	4,  // 34: weir.v1.StoreService.ResolveStore:input_type -> weir.v1.ResolveStoreRequest
-	6,  // 35: weir.v1.StoreService.ExecuteV2:input_type -> weir.v1.ExecuteRequest
+	6,  // 35: weir.v1.StoreService.Execute:input_type -> weir.v1.ExecuteRequest
 	5,  // 36: weir.v1.StoreService.ResolveStore:output_type -> weir.v1.ResolveStoreResponse
-	7,  // 37: weir.v1.StoreService.ExecuteV2:output_type -> weir.v1.ExecuteResponse
+	7,  // 37: weir.v1.StoreService.Execute:output_type -> weir.v1.ExecuteResponse
 	36, // [36:38] is the sub-list for method output_type
 	34, // [34:36] is the sub-list for method input_type
 	34, // [34:34] is the sub-list for extension type_name

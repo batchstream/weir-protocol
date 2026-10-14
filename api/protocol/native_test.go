@@ -126,7 +126,7 @@ func TestNativeResponseMetadataIsOpaqueAndBounded(t *testing.T) {
 	head := &pb.NativeHead{Metadata: metadata}
 	value := &pb.Event_Head{Head: head}
 	event := &pb.Event{Value: value}
-	if err := ValidateEvent(event); err != nil {
-		t.Fatal("additive Native metadata field rejected", err)
+	if err := ValidateEvent(event); err == nil {
+		t.Fatal("unknown Native metadata field accepted")
 	}
 }
