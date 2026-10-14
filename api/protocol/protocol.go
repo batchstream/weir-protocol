@@ -254,11 +254,11 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 	return nil
 }
 
-// ValidateExecuteResponse validates one indexed event, ignoring additive unknown
-// fields. Stream consumers enforce the expected event kind, result index sequence,
+// ValidateExecuteResponse validates one indexed event and rejects unknown fields
+// recursively. Stream consumers enforce the expected event kind, result index sequence,
 // and terminal RPC evidence. Missing or unrecognized event variants remain invalid.
 func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
-	if response == nil || response.Index == 0 || response.Index == math.MaxUint64 || proto.Size(response) > MaxExecuteResponseBytes {
+	if response == nil || response.Index == 0 || response.Index == math.MaxUint64 || proto.Size(response) > MaxExecuteResponseBytes || hasUnknown(response.ProtoReflect()) {
 		return fmt.Errorf("invalid Execute response envelope")
 	}
 	if err := ValidateEvent(response.Event); err != nil {
@@ -353,8 +353,8 @@ func decodeResourceSegment(raw string) (string, error) {
 	return segment, nil
 }
 
-// Unknown request fields are rejected recursively so unsupported operations or
-// options cannot be silently executed with different semantics.
+// Unknown wire fields are rejected recursively so unknown semantics cannot be
+// silently executed or accepted as completion evidence.
 func hasUnknown(message protoreflect.Message) bool {
 	if len(message.GetUnknown()) != 0 {
 		return true
@@ -382,10 +382,9 @@ func hasUnknown(message protoreflect.Message) bool {
 	return unknown
 }
 
-// ValidateEvent checks known event semantics and total bytes while permitting
-// additive ancillary fields. An unrecognized or missing variant is invalid.
+// ValidateEvent checks known event semantics, fields and total bytes.
 func ValidateEvent(event *pb.Event) error {
-	if event == nil || event.Value == nil || proto.Size(event) > MaxEvent {
+	if event == nil || event.Value == nil || proto.Size(event) > MaxEvent || hasUnknown(event.ProtoReflect()) {
 		return fmt.Errorf("invalid event fields or byte bound")
 	}
 	valid := false
@@ -450,9 +449,7 @@ func ValidateEvent(event *pb.Event) error {
 }
 
 func validFailure(failure *pb.Failure) bool {
-	// Positive future classifications are opaque failures; they never alter the
-	// separate application or transport evidence carried by the result.
-	return failure == nil || failure.Code > pb.FailureCode_FAILURE_CODE_UNSPECIFIED && len(failure.Message) <= 1024 && utf8.ValidString(failure.Message)
+	return failure == nil || failure.Code >= pb.FailureCode_INVALID_ARGUMENT && failure.Code <= pb.FailureCode_INTERNAL && len(failure.Message) <= 1024 && utf8.ValidString(failure.Message)
 }
 func validDocument(document *pb.Document, limit int) bool {
 	return document != nil && validMedia(document.ContentType) && len(document.Data) <= limit

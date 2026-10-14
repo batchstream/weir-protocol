@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.9.0
+go get github.com/batchstream/weir-protocol@v0.10.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -12,7 +12,7 @@ This module depends on neither repository, including through test dependencies.
 It contains no peer discovery protocol, server lifecycle, backend adapter, or SDK.
 
 - `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
-  `ExecuteV2` for Read, Mutate, Scan, and Native.
+  `Execute` for Read, Mutate, Scan, and Native.
 - `api/protocol`: common envelope, endpoint, resource and scan validation.
 - `api/netlimit`: bounded standard Go DNS transport.
 
@@ -23,7 +23,7 @@ Weir server repository.
 
 ## Streaming semantics
 
-ExecuteV2 selects one Store and operation kind for its lifetime. Each Read or Mutate
+Execute selects one Store and operation kind for its lifetime. Each Read or Mutate
 request carries one record. Servers aggregate admitted records into database
 batches; clients send and consume incrementally without collecting a wire batch.
 There is no item or byte bound on the total call. Documents are bounded at 2 MiB;
@@ -39,10 +39,9 @@ when a later request fails validation. The first record index is 1; every later
 request advances it by one. UINT64_MAX is invalid. Every record produces one
 bounded ExecuteResponse with its ordinal and typed result, in input order.
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
-validators check each envelope, nested fields, and bounds. Requests reject unknown
-fields throughout the message tree. Responses tolerate additive ancillary fields
-within the same byte bounds, while still requiring recognized result/event variants
-and valid completion evidence.
+validators check each envelope, nested fields, and bounds. Requests and responses reject unknown
+fields throughout the message tree. Responses require declared result/event
+variants, enum values and valid completion evidence within the byte bounds.
 
 ReadResult.missing confirms document absence after a successful read.
 TARGET_NOT_FOUND reports a required adapter-owned target that does not exist; it is
@@ -74,10 +73,6 @@ Failure retains application evidence but does not confirm visibility, so replay
 is still unsafe. Search adapters wait for backend refresh; adapters without a
 separate search refresh satisfy visibility when the mutation is acknowledged.
 No-op mutations must also establish visibility when requested.
-
-These request semantics use the explicit `ExecuteV2` RPC. The earlier `Execute`
-RPC is removed; upgrade the protocol, SDK and server together. The request and
-response message names and their existing field numbers remain unchanged.
 
 Scan uses an opaque adapter-owned filter expression and an optional typed
 Projection. Projection requires a uniform include/exclude mode
@@ -118,7 +113,7 @@ SHA-256 over named fields, with each name and value prefixed by a 32-bit big-end
 byte length. Its `format` field is `weir.scan.traversal.v1`; it never depends on
 protobuf serialization or unknown fields. Fixed vectors protect this encoding.
 
-The internal token envelope has an explicit version. Unsupported versions,
+The internal token envelope identifies its current format. Other formats,
 request mismatches and corruption fail before the backend checkpoint is consumed.
 The checksum is not a signature; a token cannot bypass Store access or resource
 validation. Clients keep tokens opaque and accept a checkpoint only after a
@@ -130,29 +125,21 @@ snapshot and impose no protocol token expiry; changes between pages can affect
 the traversal. Search pages share a backend point-in-time snapshot with 60 seconds
 of validity, refreshed by successful page requests. Backend deletion, PIT expiry
 or incompatible configuration can invalidate a continuation. A failure never
-automatically restarts traversal. Rolling upgrades must keep reading issued token
-and checkpoint formats for their advertised validity.
+automatically restarts traversal. Only the current token and checkpoint formats
+are accepted.
 
-## Evolution rules
+## Validation rules
 
-The current schema and semantics are the baseline. There are no legacy runtime
-modes or migration paths. Field numbers, types and meanings are permanent;
-removed fields reserve their numbers and names. Semantically new request fields,
-operations or options require an explicit contract/RPC version because requests
-fail closed. There is no implicit feature negotiation.
-
-Response additions may carry ancillary data without changing the selected
-result/event, required fields, completion evidence or byte bounds. A response
-containing only an unrecognized oneof variant is invalid. Future positive
-FailureCode values are preserved as opaque generic failures; zero and negative
-values are invalid. Clients must not infer retry safety from an unknown code or
-discard APPLIED evidence when it accompanies a Failure. MutationOutcome and
-NativeCompletion are fixed evidence vocabularies and reject unknown values.
+The current schema and semantics define one execution contract. Requests and
+responses reject unknown fields throughout the message tree. FailureCode accepts
+only declared nonzero values. MutationOutcome and NativeCompletion require known
+evidence values. A known Failure never discards APPLIED evidence or establishes
+retry safety.
 
 Native content types, backend expressions and filters retain adapter-owned
-semantics. Each adapter must document and preserve its accepted formats and
-limits; opaque bytes do not waive that contract. Changes to Lua helpers,
-conversions or execution semantics also require an explicit contract version.
+semantics. Each adapter documents its accepted formats and limits; opaque bytes
+do not waive that contract. Lua helpers, conversions and execution semantics
+follow the current contract.
 
 ## Validate
 
@@ -198,14 +185,16 @@ git diff --exit-code
 
 Use `PROTOC`, `PROTOC_GEN_GO`, `PROTOC_GEN_GO_GRPC`, and `GOFMT` to select explicit
 external tool paths. The script checks compiler/plugin versions and preserves the
-project's named struct style in generated code. Regeneration is byte reproducible.
+project's named struct style in generated code. It removes unused compatibility
+aliases and unimplemented server scaffolding; implementations provide the complete
+current service interface. Regeneration is byte reproducible.
 
 ## Publish a stable version
 
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.9.0
+gh workflow run release.yml --ref main -f version=v0.10.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete

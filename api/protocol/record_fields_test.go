@@ -89,7 +89,7 @@ func TestMutationFieldPolicy(t *testing.T) {
 	}
 }
 
-func TestRecordResponsesAcceptAdditiveFieldsAtEveryNestedLevel(t *testing.T) {
+func TestRecordResponsesRejectUnknownFieldsAtEveryNestedLevel(t *testing.T) {
 	document := &pb.Document{ContentType: "application/opaque", Data: []byte("uninterpreted")}
 	read := ReadDocument(document)
 	response := readResponse(1, read)
@@ -100,11 +100,11 @@ func TestRecordResponsesAcceptAdditiveFieldsAtEveryNestedLevel(t *testing.T) {
 			t.Fatal("fixture must be valid before mutation", err)
 		}
 		messages[position].ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
-		if err := ValidateExecuteResponse(copied); err != nil {
-			t.Fatalf("additive Read field rejected at level %d: %v", position, err)
+		if err := ValidateExecuteResponse(copied); err == nil {
+			t.Fatalf("unknown Read field accepted at level %d", position)
 		}
-		if err := ValidateReadResult(copied.Event.GetReadResult()); err != nil {
-			t.Fatalf("additive direct Read field rejected at level %d: %v", position, err)
+		if err := ValidateReadResult(copied.Event.GetReadResult()); (err != nil) != (position >= 2) {
+			t.Fatalf("direct Read validation at level %d: %v", position, err)
 		}
 	}
 	failure := Fail(pb.FailureCode_UNAVAILABLE, "unavailable")
@@ -117,11 +117,11 @@ func TestRecordResponsesAcceptAdditiveFieldsAtEveryNestedLevel(t *testing.T) {
 			t.Fatal("fixture must be valid before mutation", err)
 		}
 		messages[position].ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
-		if err := ValidateExecuteResponse(copied); err != nil {
-			t.Fatalf("additive Mutate field rejected at level %d: %v", position, err)
+		if err := ValidateExecuteResponse(copied); err == nil {
+			t.Fatalf("unknown Mutate field accepted at level %d", position)
 		}
-		if err := ValidateMutationResult(copied.Event.GetMutationResult()); err != nil {
-			t.Fatalf("additive direct Mutate field rejected at level %d: %v", position, err)
+		if err := ValidateMutationResult(copied.Event.GetMutationResult()); (err != nil) != (position >= 2) {
+			t.Fatalf("direct mutation validation at level %d: %v", position, err)
 		}
 	}
 }

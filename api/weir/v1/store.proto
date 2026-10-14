@@ -4,11 +4,9 @@ package weir.v1;
 
 option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 
-// This file defines the current stable contract. Requests reject unknown fields
-// recursively; new request semantics require an explicit contract/RPC version.
-// Responses tolerate additive ancillary fields within existing byte bounds, but
-// still require recognized oneof results/events and fixed evidence enums.
-// Field numbers, types, and meanings are permanent; reserve deleted numbers/names.
+// This file defines the current contract. Requests and responses reject unknown
+// fields recursively. Responses require recognized results/events and enum values
+// within the existing byte bounds.
 
 // StoreService discovers Store endpoints and executes requests on their owners.
 // Initialize through ResolveStore, then connect directly to a returned endpoint.
@@ -16,9 +14,7 @@ service StoreService {
   // ResolveStore returns the current endpoints for one configured Store.
   rpc ResolveStore(ResolveStoreRequest) returns (ResolveStoreResponse);
 
-  // ExecuteV2 accepts bounded requests and emits indexed results incrementally.
-  // This explicit contract version adds mutation visibility and unrestricted
-  // Native operations. The earlier Execute RPC is no longer served.
+  // Execute accepts bounded requests and emits indexed results incrementally.
   // A stream selects one Store and operation kind. Each Read or Mutate request
   // carries one record with a consecutive one-based index. It is validated
   // before execution; earlier records may have effects before a later one fails.
@@ -28,7 +24,7 @@ service StoreService {
   // Never automatically replay mutations without individual application evidence.
   // Scan and Native accept exactly one request with index 1 followed by half-close.
   // A Scan checkpoint is usable only after its terminal event and final gRPC OK.
-  rpc ExecuteV2(stream ExecuteRequest) returns (stream ExecuteResponse);
+  rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
 }
 
 // ResolveStoreRequest selects the Store whose owner endpoints are required.
@@ -142,8 +138,8 @@ message Document {
 }
 
 // FailureCode classifies operation failures independently of backend error types.
-// Future positive codes are opaque generic failures. Clients retain the numeric
-// code and separate application/transport evidence without inferring retry safety.
+// Only declared nonzero values are valid. Failure classification never overrides
+// the separate application/transport evidence or establishes retry safety.
 enum FailureCode {
   // Unset value; invalid in a reported Failure.
   FAILURE_CODE_UNSPECIFIED = 0;
@@ -208,7 +204,7 @@ enum MutationOutcome {
 
 // Failure carries one bounded, readable description of an operation failure.
 message Failure {
-  // Required positive failure classification; unknown positive values are valid.
+  // Required declared nonzero failure classification.
   FailureCode code = 1;
 
   // UTF-8 diagnostic text; clients must use code for programmatic decisions.
@@ -349,9 +345,8 @@ message ScanRequest {
   // Maximum documents in this page. Zero uses 128; the maximum is 256.
   uint32 page_size = 4;
 
-  // Opaque versioned checkpoint from a completed page, portable across nodes
-  // serving the same Store with an equivalent backend configuration. During a
-  // rolling upgrade, readers retain its format for the advertised validity.
+  // Opaque checkpoint from a completed page, portable across nodes serving the
+  // same Store with an equivalent backend configuration and token format.
   // Tokens detect corruption only; they are not authentication or authorization.
   bytes continuation_token = 5;
 }

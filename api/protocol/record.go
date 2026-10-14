@@ -40,10 +40,9 @@ func validateMutationRequest(request *pb.MutateRequest) error {
 	return nil
 }
 
-// ValidateReadResult checks the required result variant and byte bound, ignoring
-// additive ancillary fields.
+// ValidateReadResult checks the required result variant, known fields and byte bound.
 func ValidateReadResult(result *pb.ReadResult) error {
-	if result == nil || proto.Size(result) > MaxEvent {
+	if result == nil || proto.Size(result) > MaxEvent || hasUnknown(result.ProtoReflect()) {
 		return fmt.Errorf("missing or oversized Read result")
 	}
 	valid := false
@@ -70,10 +69,10 @@ func ValidateReadResult(result *pb.ReadResult) error {
 	return nil
 }
 
-// ValidateMutationResult checks fixed application evidence, allowing future
-// positive failure codes and additive ancillary fields within the byte bound.
+// ValidateMutationResult checks current application evidence, failure codes,
+// known fields and the byte bound.
 func ValidateMutationResult(result *pb.MutationResult) error {
-	if result == nil || proto.Size(result) > MaxEvent || result.Outcome < pb.MutationOutcome_NOT_STARTED || result.Outcome > pb.MutationOutcome_UNKNOWN || !validFailure(result.Failure) {
+	if result == nil || proto.Size(result) > MaxEvent || hasUnknown(result.ProtoReflect()) || result.Outcome < pb.MutationOutcome_NOT_STARTED || result.Outcome > pb.MutationOutcome_UNKNOWN || !validFailure(result.Failure) {
 		return fmt.Errorf("invalid mutation outcome or failure")
 	}
 	// Application evidence can coexist with a subsequent acknowledgement failure.

@@ -52,18 +52,18 @@ func TestPublicStoreContract(t *testing.T) {
 	if service == nil {
 		t.Fatal("public Store service missing")
 	}
-	if service.Methods().Len() != 2 || service.Methods().ByName("Execute") != nil || len(StoreService_ServiceDesc.Streams) != 1 || StoreService_ServiceDesc.Streams[0].StreamName != "ExecuteV2" {
-		t.Fatal("legacy Execute RPC must not remain in the public service")
+	if service.Methods().Len() != 2 || len(StoreService_ServiceDesc.Streams) != 1 || StoreService_ServiceDesc.Streams[0].StreamName != "Execute" {
+		t.Fatal("public service must expose exactly one Execute RPC")
 	}
 	resolve := service.Methods().ByName("ResolveStore")
-	execute := service.Methods().ByName("ExecuteV2")
+	execute := service.Methods().ByName("Execute")
 	if resolve == nil || resolve.Input().FullName() != "weir.v1.ResolveStoreRequest" || resolve.Output().FullName() != "weir.v1.ResolveStoreResponse" || resolve.IsStreamingClient() || resolve.IsStreamingServer() {
 		t.Fatal("ResolveStore unary contract changed", resolve)
 	}
 	if execute == nil || execute.Input().FullName() != "weir.v1.ExecuteRequest" || execute.Output().FullName() != "weir.v1.ExecuteResponse" || !execute.IsStreamingClient() || !execute.IsStreamingServer() {
-		t.Fatal("ExecuteV2 bidirectional contract changed", execute)
+		t.Fatal("Execute bidirectional contract changed", execute)
 	}
-	if StoreService_ResolveStore_FullMethodName != "/weir.v1.StoreService/ResolveStore" || StoreService_ExecuteV2_FullMethodName != "/weir.v1.StoreService/ExecuteV2" {
+	if StoreService_ResolveStore_FullMethodName != "/weir.v1.StoreService/ResolveStore" || StoreService_Execute_FullMethodName != "/weir.v1.StoreService/Execute" {
 		t.Fatal("generated public method paths changed")
 	}
 	request := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}}
