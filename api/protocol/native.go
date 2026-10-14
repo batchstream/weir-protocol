@@ -15,7 +15,7 @@ func ValidateNative(request *pb.NativeRequest) *pb.Failure {
 }
 
 func validateNative(request *pb.NativeRequest) *pb.Failure {
-	if request == nil || !validRelativeResource(request.Resource) {
+	if request == nil || request.Resource != "" && !validRelativeResource(request.Resource) {
 		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Native relative resource")
 	}
 	if !validDocument(request.Request, MaxNativeRequestBytes) {

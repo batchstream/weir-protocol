@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and bounded DNS helpers f
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.8.0
+go get github.com/batchstream/weir-protocol@v0.9.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -12,7 +12,7 @@ This module depends on neither repository, including through test dependencies.
 It contains no peer discovery protocol, server lifecycle, backend adapter, or SDK.
 
 - `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
-  `Execute` for Read, Mutate, Scan, and Native.
+  `ExecuteV2` for Read, Mutate, Scan, and Native.
 - `api/protocol`: common envelope, endpoint, resource and scan validation.
 - `api/netlimit`: bounded standard Go DNS transport.
 
@@ -23,7 +23,7 @@ Weir server repository.
 
 ## Streaming semantics
 
-Execute selects one Store and operation kind for its lifetime. Each Read or Mutate
+ExecuteV2 selects one Store and operation kind for its lifetime. Each Read or Mutate
 request carries one record. Servers aggregate admitted records into database
 batches; clients send and consume incrementally without collecting a wire batch.
 There is no item or byte bound on the total call. Documents are bounded at 2 MiB;
@@ -53,7 +53,10 @@ results at the caller's request. Each response confirms one record.
 Store names and resource paths are separate fields. Resource paths are bounded
 at 4096 encoded bytes and use canonical percent-encoded segments without a scheme
 or leading slash. `ParseRelativeResource` validates and decodes these paths;
-`EncodeSegment` constructs individual segments.
+`EncodeSegment` constructs individual segments. Native alone permits an empty
+resource for backend-root operations. Nonempty Native resources remain canonical
+prefixes; the request bytes select the backend command, path and parameters.
+Weir imposes no Native operation allowlist; backend authorization applies.
 
 A mutation stream is not a transaction. Mutations to the same resource execute in
 input order across requests, including after a failed item; different resources may
@@ -63,6 +66,18 @@ carry a subsequent acknowledgement failure; other outcomes require a Failure.
 An individually received MutationResult retains its application evidence if the
 stream later fails. A submitted mutation without a result may have applied.
 Clients must never automatically replay unacknowledged mutations.
+
+`MutateRequest.wait_until_visible` applies to all mutation actions. Its default
+false value requires application acknowledgement. When true, APPLIED without a
+Failure additionally confirms visibility to subsequent searches. APPLIED with a
+Failure retains application evidence but does not confirm visibility, so replay
+is still unsafe. Search adapters wait for backend refresh; adapters without a
+separate search refresh satisfy visibility when the mutation is acknowledged.
+No-op mutations must also establish visibility when requested.
+
+These request semantics use the explicit `ExecuteV2` RPC. The earlier `Execute`
+RPC is removed; upgrade the protocol, SDK and server together. The request and
+response message names and their existing field numbers remain unchanged.
 
 Scan uses an opaque adapter-owned filter expression and an optional typed
 Projection. Projection requires a uniform include/exclude mode
@@ -190,7 +205,7 @@ project's named struct style in generated code. Regeneration is byte reproducibl
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.8.0
+gh workflow run release.yml --ref main -f version=v0.9.0
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete
