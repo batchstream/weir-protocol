@@ -232,7 +232,7 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 		}
 	default:
 		if req.Index != 1 {
-			return fmt.Errorf("Scan and Native require index 1")
+			return fmt.Errorf("Scan, Native, Query and Count require index 1")
 		}
 	}
 	return nil
@@ -253,7 +253,7 @@ func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
 		return nil
 	default:
 		if response.Index != 1 {
-			return fmt.Errorf("Scan and Native events require index 1")
+			return fmt.Errorf("Scan, Native, Query and Count events require index 1")
 		}
 		return nil
 	}
@@ -296,6 +296,16 @@ func validateCommand(command *pb.Command) error {
 			return fmt.Errorf("missing Native request")
 		}
 		failure = validateNative(operation.Native)
+	case *pb.Command_Query:
+		if operation == nil || operation.Query == nil {
+			return fmt.Errorf("missing Query request")
+		}
+		failure = validateQuery(operation.Query)
+	case *pb.Command_Count:
+		if operation == nil || operation.Count == nil {
+			return fmt.Errorf("missing Count request")
+		}
+		failure = validateCount(operation.Count)
 	default:
 		return fmt.Errorf("missing command operation")
 	}
@@ -424,6 +434,16 @@ func ValidateEvent(event *pb.Event) error {
 			} else {
 				valid = valid && end.Failure != nil
 			}
+		}
+	case *pb.Event_QueryEnd:
+		if value != nil && value.QueryEnd != nil {
+			end := value.QueryEnd
+			valid = validFailure(end.Failure) && (end.Failure == nil || !end.HasMore) && (!end.HasMore || end.DocumentCount > 0)
+		}
+	case *pb.Event_CountResult:
+		if value != nil && value.CountResult != nil {
+			result := value.CountResult
+			valid = validFailure(result.Failure) && (result.Failure == nil || result.Count == 0 && !result.Estimated)
 		}
 	}
 	if !valid {

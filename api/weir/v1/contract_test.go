@@ -84,6 +84,8 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 		{name: "mutate", kind: protoreflect.MessageKind, message: "weir.v1.MutateRequest"},
 		{name: "scan", kind: protoreflect.MessageKind, message: "weir.v1.ScanRequest"},
 		{name: "native", kind: protoreflect.MessageKind, message: "weir.v1.NativeRequest"},
+		{name: "query", kind: protoreflect.MessageKind, message: "weir.v1.QueryRequest"},
+		{name: "count", kind: protoreflect.MessageKind, message: "weir.v1.CountRequest"},
 	}
 	assertFields(t, command, fields)
 	if command.Oneofs().Len() != 1 || command.Oneofs().Get(0).Name() != "operation" {
@@ -97,6 +99,8 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 		{name: "chunk", kind: protoreflect.BytesKind},
 		{name: "scan_end", kind: protoreflect.MessageKind, message: "weir.v1.ScanEnd"},
 		{name: "native_end", kind: protoreflect.MessageKind, message: "weir.v1.NativeEnd"},
+		{name: "query_end", kind: protoreflect.MessageKind, message: "weir.v1.QueryEnd"},
+		{name: "count_result", kind: protoreflect.MessageKind, message: "weir.v1.CountResult"},
 	}
 	assertFields(t, messages.ByName("Event"), events)
 	mutation := []fieldContract{
@@ -118,6 +122,34 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	if visibility == nil || visibility.Values().Len() != 2 || visibility.Values().Get(0).Name() != "APPLICATION_ACKNOWLEDGED" || visibility.Values().Get(0).Number() != 0 || visibility.Values().Get(1).Name() != "QUERY_VISIBLE" || visibility.Values().Get(1).Number() != 1 {
 		t.Fatal("mutation visibility completion conditions changed", visibility)
 	}
+}
+
+func TestQueryCountContract(t *testing.T) {
+	messages := File_api_weir_v1_store_proto.Messages()
+	query := []fieldContract{
+		{name: "native", kind: protoreflect.MessageKind, message: "weir.v1.NativeRequest"},
+		{name: "page", kind: protoreflect.Uint32Kind},
+		{name: "page_size", kind: protoreflect.Uint32Kind},
+		{name: "sort", kind: protoreflect.MessageKind, repeated: true, message: "weir.v1.SortField"},
+		{name: "projection", kind: protoreflect.MessageKind, message: "weir.v1.Projection"},
+	}
+	assertFields(t, messages.ByName("QueryRequest"), query)
+	sort := []fieldContract{{name: "field", kind: protoreflect.StringKind}, {name: "descending", kind: protoreflect.BoolKind}}
+	assertFields(t, messages.ByName("SortField"), sort)
+	end := []fieldContract{
+		{name: "document_count", kind: protoreflect.Uint64Kind},
+		{name: "failure", kind: protoreflect.MessageKind, message: "weir.v1.Failure"},
+		{name: "has_more", kind: protoreflect.BoolKind},
+	}
+	assertFields(t, messages.ByName("QueryEnd"), end)
+	count := []fieldContract{{name: "native", kind: protoreflect.MessageKind, message: "weir.v1.NativeRequest"}}
+	assertFields(t, messages.ByName("CountRequest"), count)
+	result := []fieldContract{
+		{name: "count", kind: protoreflect.Uint64Kind},
+		{name: "estimated", kind: protoreflect.BoolKind},
+		{name: "failure", kind: protoreflect.MessageKind, message: "weir.v1.Failure"},
+	}
+	assertFields(t, messages.ByName("CountResult"), result)
 }
 
 func TestStoreNeutralNativeScanAndLuaContract(t *testing.T) {

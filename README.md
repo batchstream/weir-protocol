@@ -12,8 +12,8 @@ This module depends on neither repository, including through test dependencies.
 It contains no peer discovery protocol, server lifecycle, backend adapter, or SDK.
 
 - `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
-  `Execute` for Read, Mutate, Scan, and Native.
-- `api/protocol`: common envelope, endpoint, resource and scan validation.
+  `Execute` for Read, Mutate, Scan, Native, Query, and Count.
+- `api/protocol`: common envelope, endpoint, resource, scan, and query validation.
 - `api/netlimit`: standard Go DNS transport with joined cancellation.
 
 The public schema lives in `api/weir/v1/store.proto`. Go imports and `go_package` use
@@ -51,8 +51,9 @@ results at the caller's request. Each response confirms one record.
 
 Store names and resource paths are separate fields. Resource paths use canonical percent-encoded segments without a scheme
 or leading slash. `ParseRelativeResource` validates and decodes these paths;
-`EncodeSegment` constructs individual segments. Native alone permits an empty
-resource for backend-root operations. Nonempty Native resources remain canonical
+`EncodeSegment` constructs individual segments. NativeRequest permits an empty
+resource for backend-root operations, including when used as a Query/Count source.
+Nonempty Native resources remain canonical
 prefixes; the request bytes select the backend command, path and parameters.
 Weir imposes no Native operation allowlist; backend authorization applies.
 
@@ -94,7 +95,7 @@ Nil, missing/multiple returns, arrays and scalar results are invalid. A callback
 error or invalid result never writes. Explicit null is
 `weir.null()`. See the server's [Lua guide](https://github.com/batchstream/weir/blob/main/docs/lua.md).
 
-Scan and Native accept one Command at index 1, followed by client half-close, and
+Scan, Native, Query, and Count accept one Command at index 1, followed by client half-close, and
 emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
 ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained when
 a later RPC error occurs. Document.content_type identifies the adapter-owned payload format;
@@ -103,6 +104,72 @@ incremental consumption for Scan and Native responses. A Scan continuation is
 bound to its Store, backend profile, and traversal settings. Its checksum detects
 corruption only and provides no authentication or authorization. Requests still
 validate their Store and adapter-owned resources.
+
+## Query and Count
+
+Query reads one independent offset-based page; Count returns one result. Both
+reuse `Execute`, Store routing, admission, and the adapter-owned `NativeRequest`
+format. They do not introduce a second RPC path or retain a backend session
+between calls. Query uses `Command.query` and emits `Event.document` followed by
+one `Event.query_end`. Count uses `Command.count` and emits one
+`Event.count_result`. All request and response indexes are 1.
+
+Query page zero selects page 1; page size zero selects 100. There is no Weir
+document-count ceiling. `QueryOffset` computes `(page-1)*page_size` in uint64;
+adapters reject offsets outside their backend's range before converting them to
+signed native values. Backend result windows also apply to the extra result used
+to determine `has_more`. Resource exhaustion fails the page; it never silently
+returns a shorter successful page. Query does not run Count.
+
+The optional ordered `sort` list replaces native find/Search sorting; an absent
+list preserves it. Sort paths are distinct dot-separated native field names,
+without wildcards, control characters, or empty segments. Projection follows the
+same include/exclude rules as Scan: an explicit INCLUDE or EXCLUDE mode and
+nonempty fields are required. Unlike Sink, an empty field list is invalid; omit
+the projection to preserve the native query's projection. For aggregate, explicit
+sort and projection follow the supplied pipeline, before Query pagination.
+
+MongoDB sources use a database resource and `application/bson` containing an
+ordered `find` or read-only `aggregate` command. Query replaces find skip/limit;
+Count ignores find pagination and counts matches. Aggregate Count counts the
+output of the supplied pipeline. Write stages such as `$out` and `$merge` are
+unsupported. Query documents are native BSON objects. These are the Query/Count
+adapter requirements; protocol publication alone does not add backend support.
+
+Search sources use an index resource and `application/http`, with the same
+origin-form HTTP/1.1 framing as Native, and GET or POST `/_search`. Query replaces
+`from`/`size`, while explicit sort and projection replace `sort`/`_source`.
+Documents are JSON `_source` objects, matching Weir Scan; they are not Sink's
+complete search hits. A query that disables `_source`, or a returned hit without
+stored `_source`, must fail instead of substituting an empty object. Count counts
+matching documents before pagination or collapse. Partial and timed-out backend
+results fail both operations. Exact counts set `estimated=false`; adapters that
+return estimates must set `estimated=true`. The first MongoDB and Search
+implementations can use exact counts throughout.
+
+QueryEnd reports the emitted document count, optional failure, and `has_more`.
+When `has_more=true`, the page must contain the requested number of documents;
+failed pages set `has_more=false`. Accept pagination metadata only after checking
+the document count and receiving final gRPC OK. Count failure results contain
+zero count and `estimated=false`; successful counts also require final gRPC OK.
+Both operations are independent observations: concurrent writes can shift page
+positions and make a separate Count differ from Query. Choose a stable sort with
+a unique tie-breaker when predictable pages matter. Use Scan for continuation
+based traversal.
+
+Shared validation checks the envelope, projection, sort paths, and recursive
+unknown fields. Adapters must validate read-only commands and supported options
+before execution; embedding NativeRequest does not grant unrestricted Native
+execution semantics. Invalid syntax or malformed options use INVALID_ARGUMENT;
+unsupported commands, options, or write stages use UNSUPPORTED; exceeded
+execution or output capacity uses RESOURCE_EXHAUSTED. Operation failures use the
+terminal QueryEnd/CountResult Failure. Invalid Execute envelopes and transport
+failures can terminate the RPC without a valid terminal event. Existing Failure
+codes retain cancellation, deadline, permission, and backend failure semantics.
+
+Both client and server must support these new command/event variants. Older
+schema validators reject them instead of silently ignoring unknown semantics;
+clients must not downgrade them to unrestricted Native operations.
 
 ## Continuation contract
 
