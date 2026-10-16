@@ -38,10 +38,8 @@ type StoreServiceClient interface {
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.
 	// Never automatically replay mutations without individual application evidence.
-	// Scan, Native, Query and Count accept exactly one request with index 1
-	// followed by half-close. Count returns one CountResult; Query streams one
-	// document per event and then one QueryEnd.
-	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
+	// Native accepts exactly one request with index 1 followed by half-close and
+	// streams opaque response metadata, body chunks, and transport completion.
 	Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
 }
 
@@ -89,10 +87,8 @@ type StoreServiceServer interface {
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.
 	// Never automatically replay mutations without individual application evidence.
-	// Scan, Native, Query and Count accept exactly one request with index 1
-	// followed by half-close. Count returns one CountResult; Query streams one
-	// document per event and then one QueryEnd.
-	// A Scan checkpoint is usable only after its terminal event and final gRPC OK.
+	// Native accepts exactly one request with index 1 followed by half-close and
+	// streams opaque response metadata, body chunks, and transport completion.
 	Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
 }
 
