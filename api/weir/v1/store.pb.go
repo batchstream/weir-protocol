@@ -1904,15 +1904,17 @@ func (x *QueryRequest) GetProjection() *Projection {
 	return nil
 }
 
-// QueryEnd closes a page. Accept has_more only when document_count matches the
+// QueryEnd closes a page. Accept has_more only when returned_count matches the
 // received documents and the RPC completes with final gRPC OK (EOF). has_more
 // requires a full requested page; failure requires has_more=false. A failed page
 // may have emitted documents, but supplies no successful pagination evidence.
 type QueryEnd struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DocumentCount uint64                 `protobuf:"varint,1,opt,name=document_count,json=documentCount,proto3" json:"document_count,omitempty"`
-	Failure       *Failure               `protobuf:"bytes,2,opt,name=failure,proto3" json:"failure,omitempty"`
-	HasMore       bool                   `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Number of documents emitted for this page. The total number of matches is
+	// reported independently by CountResult.count.
+	ReturnedCount uint64   `protobuf:"varint,1,opt,name=returned_count,json=returnedCount,proto3" json:"returned_count,omitempty"`
+	Failure       *Failure `protobuf:"bytes,2,opt,name=failure,proto3" json:"failure,omitempty"`
+	HasMore       bool     `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1947,9 +1949,9 @@ func (*QueryEnd) Descriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{20}
 }
 
-func (x *QueryEnd) GetDocumentCount() uint64 {
+func (x *QueryEnd) GetReturnedCount() uint64 {
 	if x != nil {
-		return x.DocumentCount
+		return x.ReturnedCount
 	}
 	return 0
 }
@@ -2023,10 +2025,12 @@ func (x *CountRequest) GetNative() *NativeRequest {
 // estimated=false; adapters providing estimates must set estimated=true.
 // A successful result also requires final gRPC OK.
 type CountResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Count         uint64                 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
-	Estimated     bool                   `protobuf:"varint,2,opt,name=estimated,proto3" json:"estimated,omitempty"`
-	Failure       *Failure               `protobuf:"bytes,3,opt,name=failure,proto3" json:"failure,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Total matches before Query pagination, or the supplied aggregate pipeline's
+	// total output. The estimated flag identifies an estimated total.
+	Count         uint64   `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
+	Estimated     bool     `protobuf:"varint,2,opt,name=estimated,proto3" json:"estimated,omitempty"`
+	Failure       *Failure `protobuf:"bytes,3,opt,name=failure,proto3" json:"failure,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2460,7 +2464,7 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"projection\x18\x05 \x01(\v2\x13.weir.v1.ProjectionR\n" +
 	"projection\"x\n" +
 	"\bQueryEnd\x12%\n" +
-	"\x0edocument_count\x18\x01 \x01(\x04R\rdocumentCount\x12*\n" +
+	"\x0ereturned_count\x18\x01 \x01(\x04R\rreturnedCount\x12*\n" +
 	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure\x12\x19\n" +
 	"\bhas_more\x18\x03 \x01(\bR\ahasMore\">\n" +
 	"\fCountRequest\x12.\n" +

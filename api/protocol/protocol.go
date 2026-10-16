@@ -438,7 +438,7 @@ func ValidateEvent(event *pb.Event) error {
 	case *pb.Event_QueryEnd:
 		if value != nil && value.QueryEnd != nil {
 			end := value.QueryEnd
-			valid = validFailure(end.Failure) && (end.Failure == nil || !end.HasMore) && (!end.HasMore || end.DocumentCount > 0)
+			valid = validFailure(end.Failure) && (end.Failure == nil || !end.HasMore) && (!end.HasMore || end.ReturnedCount > 0)
 		}
 	case *pb.Event_CountResult:
 		if value != nil && value.CountResult != nil {

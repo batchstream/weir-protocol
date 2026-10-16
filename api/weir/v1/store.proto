@@ -391,12 +391,14 @@ message QueryRequest {
   Projection projection = 5;
 }
 
-// QueryEnd closes a page. Accept has_more only when document_count matches the
+// QueryEnd closes a page. Accept has_more only when returned_count matches the
 // received documents and the RPC completes with final gRPC OK (EOF). has_more
 // requires a full requested page; failure requires has_more=false. A failed page
 // may have emitted documents, but supplies no successful pagination evidence.
 message QueryEnd {
-  uint64 document_count = 1;
+  // Number of documents emitted for this page. The total number of matches is
+  // reported independently by CountResult.count.
+  uint64 returned_count = 1;
   Failure failure = 2;
   bool has_more = 3;
 }
@@ -416,6 +418,8 @@ message CountRequest {
 // estimated=false; adapters providing estimates must set estimated=true.
 // A successful result also requires final gRPC OK.
 message CountResult {
+  // Total matches before Query pagination, or the supplied aggregate pipeline's
+  // total output. The estimated flag identifies an estimated total.
   uint64 count = 1;
   bool estimated = 2;
   Failure failure = 3;

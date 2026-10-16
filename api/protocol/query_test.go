@@ -155,8 +155,8 @@ func TestQueryCountCompletionEvidence(t *testing.T) {
 	failure := Fail(pb.FailureCode_UNAVAILABLE, "backend unavailable")
 	validEnds := []*pb.QueryEnd{
 		{},
-		{DocumentCount: 3, HasMore: true},
-		{DocumentCount: 1, Failure: failure},
+		{ReturnedCount: 3, HasMore: true},
+		{ReturnedCount: 1, Failure: failure},
 	}
 	for _, end := range validEnds {
 		value := &pb.Event_QueryEnd{QueryEnd: end}

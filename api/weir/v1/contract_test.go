@@ -137,7 +137,7 @@ func TestQueryCountContract(t *testing.T) {
 	sort := []fieldContract{{name: "field", kind: protoreflect.StringKind}, {name: "descending", kind: protoreflect.BoolKind}}
 	assertFields(t, messages.ByName("SortField"), sort)
 	end := []fieldContract{
-		{name: "document_count", kind: protoreflect.Uint64Kind},
+		{name: "returned_count", kind: protoreflect.Uint64Kind},
 		{name: "failure", kind: protoreflect.MessageKind, message: "weir.v1.Failure"},
 		{name: "has_more", kind: protoreflect.BoolKind},
 	}

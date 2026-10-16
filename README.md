@@ -147,7 +147,11 @@ results fail both operations. Exact counts set `estimated=false`; adapters that
 return estimates must set `estimated=true`. The first MongoDB and Search
 implementations can use exact counts throughout.
 
-QueryEnd reports the emitted document count, optional failure, and `has_more`.
+`QueryEnd.returned_count` reports the documents actually emitted for this page;
+`CountResult.count` reports the total number of matches before Query pagination.
+For example, with 250 matching documents and no concurrent changes, page 2 with
+`page_size=100` returns `returned_count=100` and `has_more=true`; an independent
+Count returns `count=250`. QueryEnd also carries an optional failure and `has_more`.
 When `has_more=true`, the page must contain the requested number of documents;
 failed pages set `has_more=false`. Accept pagination metadata only after checking
 the document count and receiving final gRPC OK. Count failure results contain
