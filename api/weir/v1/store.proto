@@ -452,11 +452,12 @@ message ScanRequest {
 }
 
 // ScanEnd closes one finite page. A successful page has exactly one of exhausted
-// or next_continuation_token. Accept its checkpoint only after the document count
+// or next_continuation_token. Accept its checkpoint only after returned_count
 // matches the received events and the RPC completes with final gRPC OK (EOF).
 message ScanEnd {
-  // Number of document events emitted in this page, including a failed page.
-  uint64 document_count = 1;
+  // Number of documents emitted for this page, including a failed page. This is
+  // neither the traversal's cumulative count nor the total number of matches.
+  uint64 returned_count = 1;
 
   // Optional terminal failure; failed pages provide no successful checkpoint.
   Failure failure = 2;

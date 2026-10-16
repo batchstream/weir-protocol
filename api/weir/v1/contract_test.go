@@ -175,6 +175,13 @@ func TestStoreNeutralNativeScanAndLuaContract(t *testing.T) {
 		{name: "continuation_token", kind: protoreflect.BytesKind},
 	}
 	assertFields(t, messages.ByName("ScanRequest"), scan)
+	scanEnd := []fieldContract{
+		{name: "returned_count", kind: protoreflect.Uint64Kind},
+		{name: "failure", kind: protoreflect.MessageKind, message: "weir.v1.Failure"},
+		{name: "next_continuation_token", kind: protoreflect.BytesKind},
+		{name: "exhausted", kind: protoreflect.BoolKind},
+	}
+	assertFields(t, messages.ByName("ScanEnd"), scanEnd)
 	lua := []fieldContract{{name: "source", kind: protoreflect.BytesKind}, {name: "input", kind: protoreflect.MessageKind, message: "weir.v1.Document"}}
 	assertFields(t, messages.ByName("LuaTransform"), lua)
 	projection := []fieldContract{{name: "mode", kind: protoreflect.EnumKind}, {name: "fields", kind: protoreflect.StringKind, repeated: true}}

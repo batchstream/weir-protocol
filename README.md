@@ -96,7 +96,7 @@ error or invalid result never writes. Explicit null is
 `weir.null()`. See the server's [Lua guide](https://github.com/batchstream/weir/blob/main/docs/lua.md).
 
 Scan, Native, Query, and Count accept one Command at index 1, followed by client half-close, and
-emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
+emit typed events at index 1. Scan checkpoints require a matching `returned_count`, a terminal
 ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained when
 a later RPC error occurs. Document.content_type identifies the adapter-owned payload format;
 read requests do not negotiate a different representation. Backend document limits apply; streams preserve
@@ -178,6 +178,12 @@ clients must not downgrade them to unrestricted Native operations.
 ## Continuation contract
 
 Scan is read-only and returns documents without independent resource identity.
+`ScanEnd.returned_count` reports only the documents actually emitted for the
+current page, including a failed page. It does not report the traversal's
+cumulative count or the total number of matching documents. For example, three
+pages returning 100, 100, and 50 documents report returned counts of 100, 100, and
+50. A failed page still provides no successful checkpoint.
+
 Continuation format 1 binds the Store, backend profile, resource, filter presence,
 content type and exact bytes, and projection presence, mode and ordered fields.
 Page size and the supplied token are excluded. The traversal fingerprint is
@@ -189,7 +195,7 @@ The internal token envelope identifies its current format. Other formats,
 request mismatches and corruption fail before the backend checkpoint is consumed.
 The checksum is not a signature; a token cannot bypass Store access or resource
 validation. Clients keep tokens opaque and accept a checkpoint only after a
-successful terminal ScanEnd, matching document count and final gRPC OK.
+successful terminal ScanEnd, matching `returned_count` and final gRPC OK.
 
 Tokens are portable across nodes serving the same Store with an equivalent backend
 configuration. MongoDB pages use ordered resume state, provide no cross-page

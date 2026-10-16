@@ -2177,12 +2177,13 @@ func (x *ScanRequest) GetContinuationToken() []byte {
 }
 
 // ScanEnd closes one finite page. A successful page has exactly one of exhausted
-// or next_continuation_token. Accept its checkpoint only after the document count
+// or next_continuation_token. Accept its checkpoint only after returned_count
 // matches the received events and the RPC completes with final gRPC OK (EOF).
 type ScanEnd struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Number of document events emitted in this page, including a failed page.
-	DocumentCount uint64 `protobuf:"varint,1,opt,name=document_count,json=documentCount,proto3" json:"document_count,omitempty"`
+	// Number of documents emitted for this page, including a failed page. This is
+	// neither the traversal's cumulative count nor the total number of matches.
+	ReturnedCount uint64 `protobuf:"varint,1,opt,name=returned_count,json=returnedCount,proto3" json:"returned_count,omitempty"`
 	// Optional terminal failure; failed pages provide no successful checkpoint.
 	Failure *Failure `protobuf:"bytes,2,opt,name=failure,proto3" json:"failure,omitempty"`
 	// Opaque next-page checkpoint; present only on nonexhausted successful pages.
@@ -2223,9 +2224,9 @@ func (*ScanEnd) Descriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{24}
 }
 
-func (x *ScanEnd) GetDocumentCount() uint64 {
+func (x *ScanEnd) GetReturnedCount() uint64 {
 	if x != nil {
-		return x.DocumentCount
+		return x.ReturnedCount
 	}
 	return 0
 }
@@ -2482,7 +2483,7 @@ const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\tpage_size\x18\x04 \x01(\rR\bpageSize\x12-\n" +
 	"\x12continuation_token\x18\x05 \x01(\fR\x11continuationToken\"\xb2\x01\n" +
 	"\aScanEnd\x12%\n" +
-	"\x0edocument_count\x18\x01 \x01(\x04R\rdocumentCount\x12*\n" +
+	"\x0ereturned_count\x18\x01 \x01(\x04R\rreturnedCount\x12*\n" +
 	"\afailure\x18\x02 \x01(\v2\x10.weir.v1.FailureR\afailure\x126\n" +
 	"\x17next_continuation_token\x18\x03 \x01(\fR\x15nextContinuationToken\x12\x1c\n" +
 	"\texhausted\x18\x04 \x01(\bR\texhausted\"g\n" +
