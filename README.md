@@ -12,8 +12,8 @@ This module depends on neither repository, including through test dependencies.
 It contains no peer discovery protocol, server lifecycle, backend adapter, or SDK.
 
 - `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
-  `Execute` for Read, Mutate, Scan, and Native.
-- `api/protocol`: common envelope, endpoint, resource and scan validation.
+  `Execute` for Read, Mutate, and Native.
+- `api/protocol`: common envelope, endpoint, resource, record, and Native validation.
 - `api/netlimit`: standard Go DNS transport with joined cancellation.
 
 The public schema lives in `api/weir/v1/store.proto`. Go imports and `go_package` use
@@ -51,7 +51,7 @@ results at the caller's request. Each response confirms one record.
 
 Store names and resource paths are separate fields. Resource paths use canonical percent-encoded segments without a scheme
 or leading slash. `ParseRelativeResource` validates and decodes these paths;
-`EncodeSegment` constructs individual segments. Native alone permits an empty
+`EncodeSegment` constructs individual segments. NativeRequest permits an empty
 resource for backend-root operations. Nonempty Native resources remain canonical
 prefixes; the request bytes select the backend command, path and parameters.
 Weir imposes no Native operation allowlist; backend authorization applies.
@@ -75,13 +75,6 @@ adapters without deferred query visibility satisfy this when the mutation is
 acknowledged. No-op mutations must also establish the requested visibility.
 Unknown option fields and undeclared visibility values are rejected.
 
-Scan uses an opaque adapter-owned filter expression and an optional typed
-Projection. Projection requires a uniform include/exclude mode
-and nonempty dot-separated field paths; duplicate, ancestor-overlapping,
-control characters and wildcard paths are invalid. Literal field names such as
-`$field` are allowed by the protocol; adapters enforce their own field rules. An absent Projection returns full
-documents. The projection participates in traversal identity.
-
 LuaTransform supplies Source and optional Input with Lua 5.4 semantics and no
 runtime selector. The entry point, return actions, helper set and document
 conversion rules are stable parts of the contract.
@@ -94,40 +87,33 @@ Nil, missing/multiple returns, arrays and scalar results are invalid. A callback
 error or invalid result never writes. Explicit null is
 `weir.null()`. See the server's [Lua guide](https://github.com/batchstream/weir/blob/main/docs/lua.md).
 
-Scan and Native accept one Command at index 1, followed by client half-close, and
-emit typed events at index 1. Scan checkpoints require a matching document count, a terminal
-ScanEnd and final gRPC OK. NativeEnd is transport evidence and may be retained when
-a later RPC error occurs. Document.content_type identifies the adapter-owned payload format;
-read requests do not negotiate a different representation. Backend document limits apply; streams preserve
-incremental consumption for Scan and Native responses. A Scan continuation is
-bound to its Store, backend profile, and traversal settings. Its checksum detects
-corruption only and provides no authentication or authorization. Requests still
-validate their Store and adapter-owned resources.
+## Native backend commands
 
-## Continuation contract
+Native accepts exactly one Command at index 1, followed by client half-close.
+Every event uses index 1. A complete response emits NativeHead, zero or more
+nonempty body chunks, and NativeEnd with RESPONSE_COMPLETE; its body may be empty.
+A failure may emit NativeEnd before any head. Body chunks always follow a head.
+NativeHead contains optional opaque metadata and the body's content type.
+NativeEnd reports response transport completion, never whether a mutation was
+applied. Its evidence may be retained when a later RPC error occurs. Backend
+error replies remain native response bodies; clients interpret backend status
+and application semantics. Clients must not automatically replay Native calls
+whose effects are unknown.
 
-Scan is read-only and returns documents without independent resource identity.
-Continuation format 1 binds the Store, backend profile, resource, filter presence,
-content type and exact bytes, and projection presence, mode and ordered fields.
-Page size and the supplied token are excluded. The traversal fingerprint is
-SHA-256 over named fields, with each name and value prefixed by a 32-bit big-endian
-byte length. Its `format` field is `weir.scan.traversal.v1`; it never depends on
-protobuf serialization or unknown fields. Fixed vectors protect this encoding.
+Queries, scans, and counts use Native backend commands. The client owns native
+filters, projection, sorting, page sizes, offsets, cursors, and counting semantics.
+For MongoDB, send ordered BSON commands such as find, aggregate, getMore, and
+count. For Search, send native HTTP requests such as _search, _count, and PIT
+requests. Responses retain the complete native reply, including cursor, hit, and
+count metadata; Weir does not extract documents or synthesize a page checkpoint.
+Clients manage continuation requests and backend cursor/PIT cleanup. Native does
+not promise cross-call session affinity, cursor portability, a snapshot, or a
+Weir continuation-token format. Backend protocols and permissions apply.
 
-The internal token envelope identifies its current format. Other formats,
-request mismatches and corruption fail before the backend checkpoint is consumed.
-The checksum is not a signature; a token cannot bypass Store access or resource
-validation. Clients keep tokens opaque and accept a checkpoint only after a
-successful terminal ScanEnd, matching document count and final gRPC OK.
-
-Tokens are portable across nodes serving the same Store with an equivalent backend
-configuration. MongoDB pages use ordered resume state, provide no cross-page
-snapshot and impose no protocol token expiry; changes between pages can affect
-the traversal. Search pages share a backend point-in-time snapshot with 60 seconds
-of validity, refreshed by successful page requests. Backend deletion, PIT expiry
-or incompatible configuration can invalidate a continuation. A failure never
-automatically restarts traversal. Only the current token and checkpoint formats
-are accepted.
+Read and Mutate retain record batching, per-resource ordering, and application
+evidence. Native remains the direct opaque command path; it does not run record
+batching or Lua transforms. This keeps query execution and pagination policy in
+the backend and its client.
 
 ## Validation rules
 
@@ -137,7 +123,7 @@ only declared nonzero values. MutationOutcome and NativeCompletion require known
 evidence values. A known Failure never discards APPLIED evidence or establishes
 retry safety.
 
-Native content types, backend expressions and filters retain adapter-owned
+Native content types and backend expressions retain adapter-owned
 semantics. Each adapter documents its accepted formats and limits; opaque bytes
 do not waive that contract. Lua helpers, conversions and execution semantics
 follow the current contract.

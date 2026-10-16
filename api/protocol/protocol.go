@@ -181,27 +181,6 @@ func validateMutationFields(mutation *pb.MutateRequest) *pb.Failure {
 
 func validMedia(s string) bool { return mediaPattern.MatchString(s) }
 
-func ValidateScan(req *pb.ScanRequest) *pb.Failure {
-	if req == nil || hasUnknown(req.ProtoReflect()) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing Scan or unknown fields")
-	}
-	return validateScan(req)
-}
-
-func validateScan(req *pb.ScanRequest) *pb.Failure {
-	if req == nil {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "missing or invalid Scan")
-	}
-	if !validRelativeResource(req.Resource) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Scan relative resource")
-	}
-
-	if d := req.Filter; d != nil && (!validMedia(d.ContentType) || len(d.Data) == 0) {
-		return Fail(pb.FailureCode_INVALID_ARGUMENT, "invalid Scan filter")
-	}
-	return validateProjection(req.Projection)
-}
-
 const NativeChunk = 64 << 10
 
 func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
@@ -232,7 +211,7 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 		}
 	default:
 		if req.Index != 1 {
-			return fmt.Errorf("Scan and Native require index 1")
+			return fmt.Errorf("Native requires index 1")
 		}
 	}
 	return nil
@@ -253,7 +232,7 @@ func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
 		return nil
 	default:
 		if response.Index != 1 {
-			return fmt.Errorf("Scan and Native events require index 1")
+			return fmt.Errorf("Native events require index 1")
 		}
 		return nil
 	}
@@ -274,7 +253,6 @@ func validateCommand(command *pb.Command) error {
 	if command == nil || command.Operation == nil {
 		return fmt.Errorf("invalid command fields")
 	}
-	var failure *pb.Failure
 	switch operation := command.Operation.(type) {
 	case *pb.Command_Read:
 		if operation == nil {
@@ -286,23 +264,17 @@ func validateCommand(command *pb.Command) error {
 			return fmt.Errorf("missing Mutate request")
 		}
 		return validateMutationRequest(operation.Mutate)
-	case *pb.Command_Scan:
-		if operation == nil {
-			return fmt.Errorf("missing Scan request")
-		}
-		failure = validateScan(operation.Scan)
 	case *pb.Command_Native:
 		if operation == nil || operation.Native == nil {
 			return fmt.Errorf("missing Native request")
 		}
-		failure = validateNative(operation.Native)
+		if failure := validateNative(operation.Native); failure != nil {
+			return fmt.Errorf("%s", failure.Message)
+		}
+		return nil
 	default:
 		return fmt.Errorf("missing command operation")
 	}
-	if failure != nil {
-		return fmt.Errorf("%s", failure.Message)
-	}
-	return nil
 }
 
 func validRelativeResource(resource string) bool {
@@ -383,11 +355,6 @@ func ValidateEvent(event *pb.Event) error {
 			break
 		}
 		return ValidateMutationResult(value.MutationResult)
-	case *pb.Event_Document:
-		if value == nil {
-			break
-		}
-		valid = validDocument(value.Document)
 	case *pb.Event_Head:
 		if value == nil {
 			break
@@ -399,19 +366,6 @@ func ValidateEvent(event *pb.Event) error {
 			break
 		}
 		valid = len(value.Chunk) > 0
-	case *pb.Event_ScanEnd:
-		if value == nil {
-			break
-		}
-		end := value.ScanEnd
-		if end != nil {
-			valid = validFailure(end.Failure)
-			if end.Failure == nil {
-				valid = valid && end.Exhausted != (len(end.NextContinuationToken) != 0)
-			} else {
-				valid = valid && !end.Exhausted && len(end.NextContinuationToken) == 0
-			}
-		}
 	case *pb.Event_NativeEnd:
 		if value == nil {
 			break

@@ -12,15 +12,11 @@ func TestStreamingResponsesRejectNestedUnknownFields(t *testing.T) {
 	metadata := &pb.Document{ContentType: "application/opaque", Data: []byte("metadata")}
 	head := &pb.NativeHead{Metadata: metadata, BodyContentType: "application/opaque"}
 	headValue := &pb.Event_Head{Head: head}
-	scanFailure := Fail(pb.FailureCode_UNAVAILABLE, "scan failure")
-	scanEnd := &pb.ScanEnd{Failure: scanFailure}
-	scanValue := &pb.Event_ScanEnd{ScanEnd: scanEnd}
 	nativeFailure := Fail(pb.FailureCode_UNAVAILABLE, "native failure")
 	nativeEnd := &pb.NativeEnd{Completion: pb.NativeCompletion_RESPONSE_INCOMPLETE, Failure: nativeFailure}
 	nativeValue := &pb.Event_NativeEnd{NativeEnd: nativeEnd}
 	chunkValue := &pb.Event_Chunk{Chunk: []byte("body")}
-	documentValue := &pb.Event_Document{Document: metadata}
-	events := []*pb.Event{{Value: headValue}, {Value: scanValue}, {Value: nativeValue}, {Value: chunkValue}, {Value: documentValue}}
+	events := []*pb.Event{{Value: headValue}, {Value: nativeValue}, {Value: chunkValue}}
 	for _, event := range events {
 		response := &pb.ExecuteResponse{Index: 1, Event: event}
 		if err := ValidateExecuteResponse(response); err != nil {
@@ -30,12 +26,8 @@ func TestStreamingResponsesRejectNestedUnknownFields(t *testing.T) {
 		switch value := event.Value.(type) {
 		case *pb.Event_Head:
 			messages = append(messages, value.Head, value.Head.Metadata)
-		case *pb.Event_ScanEnd:
-			messages = append(messages, value.ScanEnd, value.ScanEnd.Failure)
 		case *pb.Event_NativeEnd:
 			messages = append(messages, value.NativeEnd, value.NativeEnd.Failure)
-		case *pb.Event_Document:
-			messages = append(messages, value.Document)
 		}
 		for _, message := range messages {
 			message.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
@@ -65,15 +57,9 @@ func TestOnlyDeclaredFailureCodesAreAccepted(t *testing.T) {
 				t.Fatal("undeclared mutation failure accepted", code)
 			}
 		}
-		scan := &pb.ScanEnd{Failure: failure}
-		scanValue := &pb.Event_ScanEnd{ScanEnd: scan}
-		event := &pb.Event{Value: scanValue}
-		if err := ValidateEvent(event); err == nil {
-			t.Fatal("undeclared Scan failure accepted", code)
-		}
 		native := &pb.NativeEnd{Completion: pb.NativeCompletion_RESPONSE_INCOMPLETE, Failure: failure}
 		nativeValue := &pb.Event_NativeEnd{NativeEnd: native}
-		event.Value = nativeValue
+		event := &pb.Event{Value: nativeValue}
 		if err := ValidateEvent(event); err == nil {
 			t.Fatal("undeclared Native failure accepted", code)
 		}

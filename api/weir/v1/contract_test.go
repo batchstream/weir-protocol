@@ -82,7 +82,6 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	fields := []fieldContract{
 		{name: "read", kind: protoreflect.MessageKind, message: "weir.v1.ReadRequest"},
 		{name: "mutate", kind: protoreflect.MessageKind, message: "weir.v1.MutateRequest"},
-		{name: "scan", kind: protoreflect.MessageKind, message: "weir.v1.ScanRequest"},
 		{name: "native", kind: protoreflect.MessageKind, message: "weir.v1.NativeRequest"},
 	}
 	assertFields(t, command, fields)
@@ -92,10 +91,8 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	events := []fieldContract{
 		{name: "read_result", kind: protoreflect.MessageKind, message: "weir.v1.ReadResult"},
 		{name: "mutation_result", kind: protoreflect.MessageKind, message: "weir.v1.MutationResult"},
-		{name: "document", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
 		{name: "head", kind: protoreflect.MessageKind, message: "weir.v1.NativeHead"},
 		{name: "chunk", kind: protoreflect.BytesKind},
-		{name: "scan_end", kind: protoreflect.MessageKind, message: "weir.v1.ScanEnd"},
 		{name: "native_end", kind: protoreflect.MessageKind, message: "weir.v1.NativeEnd"},
 	}
 	assertFields(t, messages.ByName("Event"), events)
@@ -120,7 +117,7 @@ func TestPublicCommandAndEventContract(t *testing.T) {
 	}
 }
 
-func TestStoreNeutralNativeScanAndLuaContract(t *testing.T) {
+func TestStoreNeutralNativeAndLuaContract(t *testing.T) {
 	messages := File_api_weir_v1_store_proto.Messages()
 	native := []fieldContract{
 		{name: "resource", kind: protoreflect.StringKind},
@@ -135,33 +132,23 @@ func TestStoreNeutralNativeScanAndLuaContract(t *testing.T) {
 		{name: "body_content_type", kind: protoreflect.StringKind},
 	}
 	assertFields(t, messages.ByName("NativeHead"), head)
-	scan := []fieldContract{
-		{name: "resource", kind: protoreflect.StringKind},
-		{name: "filter", kind: protoreflect.MessageKind, message: "weir.v1.Document"},
-		{name: "projection", kind: protoreflect.MessageKind, message: "weir.v1.Projection"},
-		{name: "page_size", kind: protoreflect.Uint32Kind},
-		{name: "continuation_token", kind: protoreflect.BytesKind},
-	}
-	assertFields(t, messages.ByName("ScanRequest"), scan)
 	lua := []fieldContract{{name: "source", kind: protoreflect.BytesKind}, {name: "input", kind: protoreflect.MessageKind, message: "weir.v1.Document"}}
 	assertFields(t, messages.ByName("LuaTransform"), lua)
-	projection := []fieldContract{{name: "mode", kind: protoreflect.EnumKind}, {name: "fields", kind: protoreflect.StringKind, repeated: true}}
-	assertFields(t, messages.ByName("Projection"), projection)
 	if FailureCode(4).String() != "TARGET_NOT_FOUND" {
 		t.Fatal("missing backend target must have an explicit failure classification")
 	}
 }
 
 func TestIndexedExecutionWireEncoding(t *testing.T) {
-	scan := &ScanRequest{Resource: "x"}
-	operation := &Command_Scan{Scan: scan}
+	read := &ReadRequest{Resource: "x"}
+	operation := &Command_Read{Read: read}
 	command := &Command{Operation: operation}
 	request := &ExecuteRequest{StoreName: "records", Index: 1, Command: command}
 	encoded, err := proto.Marshal(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRequest := []byte{0x0a, 0x07, 'r', 'e', 'c', 'o', 'r', 'd', 's', 0x10, 1, 0x1a, 0x05, 0x1a, 0x03, 0x0a, 0x01, 'x'}
+	wantRequest := []byte{0x0a, 0x07, 'r', 'e', 'c', 'o', 'r', 'd', 's', 0x10, 1, 0x1a, 0x05, 0x0a, 0x03, 0x0a, 0x01, 'x'}
 	if !bytes.Equal(encoded, wantRequest) {
 		t.Fatal("indexed execution wire changed", encoded)
 	}

@@ -62,8 +62,9 @@ func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
 }
 
 func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
-	scan := &pb.ScanRequest{Resource: "records", PageSize: 1}
-	variant := &pb.Command_Scan{Scan: scan}
+	body := &pb.Document{ContentType: "application/opaque"}
+	native := &pb.NativeRequest{Resource: "records", Request: body}
+	variant := &pb.Command_Native{Native: native}
 	command := &pb.Command{Operation: variant}
 	request := &pb.ExecuteRequest{StoreName: "records", Index: 1, Command: command}
 	if err := ValidateExecuteRequest(request); err != nil {
@@ -75,10 +76,10 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 		func(r *pb.ExecuteRequest) { r.Index = 2 },
 		func(r *pb.ExecuteRequest) { r.Command = nil },
 		func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
-		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "weir://records/data" },
-		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "/data" },
-		func(r *pb.ExecuteRequest) { r.Command.GetScan().Resource = "data/%6B" },
-		func(r *pb.ExecuteRequest) { r.Command.GetScan().ProtoReflect().SetUnknown([]byte{0x38, 1}) },
+		func(r *pb.ExecuteRequest) { r.Command.GetNative().Resource = "weir://records/data" },
+		func(r *pb.ExecuteRequest) { r.Command.GetNative().Resource = "/data" },
+		func(r *pb.ExecuteRequest) { r.Command.GetNative().Resource = "data/%6B" },
+		func(r *pb.ExecuteRequest) { r.Command.GetNative().ProtoReflect().SetUnknown([]byte{0x38, 1}) },
 	} {
 		copied := proto.Clone(request).(*pb.ExecuteRequest)
 		mutate(copied)
@@ -87,7 +88,8 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 		}
 	}
 	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, (2 << 20))}
-	value := &pb.Event_Document{Document: document}
+	head := &pb.NativeHead{Metadata: document}
+	value := &pb.Event_Head{Head: head}
 	event := &pb.Event{Value: value}
 	response := &pb.ExecuteResponse{Index: 1, Event: event}
 	if err := ValidateExecuteResponse(response); err != nil {
@@ -132,7 +134,8 @@ func TestNativeUsesOneIndexedFrame(t *testing.T) {
 
 func TestEventValidationAndTypedEncoding(t *testing.T) {
 	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, (2 << 20))}
-	value := &pb.Event_Document{Document: document}
+	head := &pb.NativeHead{Metadata: document}
+	value := &pb.Event_Head{Head: head}
 	event := &pb.Event{Value: value}
 	encoded, err := proto.Marshal(event)
 	if err != nil {
@@ -150,7 +153,8 @@ func TestEventValidationAndTypedEncoding(t *testing.T) {
 		t.Fatal("failure message changed")
 	}
 	badDocument := &pb.Document{ContentType: "invalid"}
-	badDocumentValue := &pb.Event_Document{Document: badDocument}
+	badHead := &pb.NativeHead{Metadata: badDocument}
+	badDocumentValue := &pb.Event_Head{Head: badHead}
 	badChunkValue := &pb.Event_Chunk{}
 	badEnd := &pb.NativeEnd{Completion: pb.NativeCompletion(99)}
 	badEndValue := &pb.Event_NativeEnd{NativeEnd: badEnd}

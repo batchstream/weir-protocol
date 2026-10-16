@@ -35,10 +35,8 @@ func TestTypedNilOneofsRejectWithoutPanicking(t *testing.T) {
 	events := []*pb.Event{
 		{Value: (*pb.Event_ReadResult)(nil)},
 		{Value: (*pb.Event_MutationResult)(nil)},
-		{Value: (*pb.Event_Document)(nil)},
 		{Value: (*pb.Event_Head)(nil)},
 		{Value: (*pb.Event_Chunk)(nil)},
-		{Value: (*pb.Event_ScanEnd)(nil)},
 		{Value: (*pb.Event_NativeEnd)(nil)},
 	}
 	reads := []*pb.ReadResult{
@@ -62,7 +60,6 @@ func TestTypedNilOneofsRejectWithoutPanicking(t *testing.T) {
 	commands := []*pb.Command{
 		{Operation: (*pb.Command_Read)(nil)},
 		{Operation: (*pb.Command_Mutate)(nil)},
-		{Operation: (*pb.Command_Scan)(nil)},
 		{Operation: (*pb.Command_Native)(nil)},
 	}
 	for _, command := range commands {

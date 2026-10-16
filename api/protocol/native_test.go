@@ -51,10 +51,6 @@ func TestOnlyNativePermitsEmptyBackendRootResource(t *testing.T) {
 	if err := ValidateMutationRequest(mutation); err == nil {
 		t.Fatal("Mutate accepted an empty resource")
 	}
-	scan := &pb.ScanRequest{}
-	if failure := ValidateScan(scan); failure == nil {
-		t.Fatal("Scan accepted an empty resource")
-	}
 	for _, resource := range []string{"/root", "root/..", "root/%6B", "weir://other/root"} {
 		request.Command.GetNative().Resource = resource
 		if err := ValidateExecuteRequest(request); err == nil {
