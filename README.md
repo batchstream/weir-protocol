@@ -4,7 +4,7 @@ Shared public schemas, generated Go types, validation, and owned DNS helpers for
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.12.0
+go get github.com/batchstream/weir-protocol@v0.14.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -181,7 +181,7 @@ current service interface. Regeneration is byte reproducible.
 After the reviewed change is merged, an authorized maintainer can publish:
 
 ```sh
-gh workflow run release.yml --ref main -f version=v0.12.0
+gh workflow run release.yml --ref main -f version=vX.Y.Z
 ```
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete
