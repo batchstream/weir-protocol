@@ -116,9 +116,9 @@ the backend and its client.
 ## Validation rules
 
 Requests and responses reject unknown fields throughout the message tree.
-FailureCode accepts only declared nonzero values. MutationOutcome and NativeCompletion require known
-evidence values. A known Failure never discards APPLIED evidence or establishes
-retry safety.
+FailureCode accepts only declared nonzero values. MutationOutcome and
+NativeCompletion require known evidence values. A known Failure never discards
+APPLIED evidence or establishes retry safety.
 
 Native content types and backend expressions retain adapter-owned
 semantics. Each adapter documents its accepted formats and limits; opaque bytes
