@@ -7,6 +7,7 @@ import (
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func TestCanonicalRelativeResource(t *testing.T) {
@@ -178,5 +179,23 @@ func TestAppliedMutationMayReportPostWriteFailure(t *testing.T) {
 	mutation.Outcome, mutation.Failure = pb.MutationOutcome_NOT_STARTED, nil
 	if err := ValidateMutationResult(mutation); err == nil {
 		t.Fatal("unfinished result without failure accepted")
+	}
+}
+
+func TestSchemaHasNoMapFields(t *testing.T) {
+	pending := []protoreflect.MessageDescriptors{pb.File_api_weir_v1_store_proto.Messages()}
+	for len(pending) > 0 {
+		messages := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		for i := range messages.Len() {
+			message := messages.Get(i)
+			fields := message.Fields()
+			for j := range fields.Len() {
+				if fields.Get(j).IsMap() {
+					t.Fatalf("%s is a map field; hasUnknown does not inspect map values", fields.Get(j).FullName())
+				}
+			}
+			pending = append(pending, message.Messages())
+		}
 	}
 }
