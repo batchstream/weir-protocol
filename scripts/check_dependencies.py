@@ -50,13 +50,12 @@ def check_packages(packages):
 
 def main():
     root = Path(__file__).resolve().parent.parent
-    go_bin = os.environ.get('WEIR_PROTOCOL_GO', 'go')
     go_env = dict(os.environ, GOWORK='off')
-    raw_modules = subprocess.check_output([go_bin, 'list', '-m', '-json', 'all'], cwd=root, env=go_env, text=True, timeout=120)
+    raw_modules = subprocess.check_output(['go', 'list', '-m', '-json', 'all'], cwd=root, env=go_env, text=True, timeout=120)
     check_modules(objects(raw_modules))
-    raw_graph = subprocess.check_output([go_bin, 'mod', 'graph'], cwd=root, env=go_env, text=True, timeout=120)
+    raw_graph = subprocess.check_output(['go', 'mod', 'graph'], cwd=root, env=go_env, text=True, timeout=120)
     check_graph(raw_graph)
-    raw_packages = subprocess.check_output([go_bin, 'list', '-deps', '-test', '-json', './...'], cwd=root, env=go_env, text=True, timeout=120)
+    raw_packages = subprocess.check_output(['go', 'list', '-deps', '-test', '-json', './...'], cwd=root, env=go_env, text=True, timeout=120)
     check_packages(objects(raw_packages))
     print('Standalone protocol production/test module and package graph passed')
 

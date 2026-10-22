@@ -4,9 +4,8 @@ package weir.v1;
 
 option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 
-// This file defines the current contract. Requests and responses reject unknown
-// fields recursively. Responses require recognized results/events and enum values
-// within the existing byte bounds.
+// Requests and responses reject unknown fields recursively. Responses require
+// recognized results/events and enum values.
 
 // StoreService discovers Store endpoints and executes requests on their owners.
 // Initialize through ResolveStore, then connect directly to a returned endpoint.

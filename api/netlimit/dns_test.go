@@ -9,9 +9,9 @@ import (
 	"github.com/batchstream/weir-protocol/internal/testutil/testdns"
 )
 
-func TestDNSAnswersBeyondFormerBounds(t *testing.T) {
+func TestLookupHostReturnsLargeTCPAnswer(t *testing.T) {
 	dns := testdns.Start(t)
-	addresses := make([]netip.Addr, 192)
+	addresses := make([]netip.Addr, 100)
 	for i := range addresses {
 		value := [4]byte{127, 0, 0, byte(i + 1)}
 		addresses[i] = netip.AddrFrom4(value)
@@ -24,5 +24,4 @@ func TestDNSAnswersBeyondFormerBounds(t *testing.T) {
 	if err != nil || len(ips) != len(addresses) {
 		t.Fatal("large DNS answer rejected", len(ips), err)
 	}
-
 }

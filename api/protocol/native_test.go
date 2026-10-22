@@ -54,7 +54,7 @@ func TestOnlyNativePermitsEmptyBackendRootResource(t *testing.T) {
 	for _, resource := range []string{"/root", "root/..", "root/%6B", "weir://other/root"} {
 		request.Command.GetNative().Resource = resource
 		if err := ValidateExecuteRequest(request); err == nil {
-			t.Fatal("Native accepted a malformed or oversized target prefix", resource)
+			t.Fatal("Native accepted a malformed target prefix", resource)
 		}
 	}
 }
@@ -80,22 +80,22 @@ func TestNativeRequestRequiredAndUnknownFields(t *testing.T) {
 	}
 }
 
-func TestNativePayloadBeyondFormerFrameLimit(t *testing.T) {
-	contentType := "application/" + strings.Repeat("x", 115)
-	document := &pb.Document{ContentType: contentType, Data: make([]byte, (9<<20)+1)}
+func TestNativeAcceptsLargeRequests(t *testing.T) {
+	contentType := "application/vnd." + strings.Repeat("x", 500)
+	document := &pb.Document{ContentType: contentType, Data: make([]byte, 16<<20)}
 	request := nativeExecution(document)
-	request.Command.GetNative().Resource = strings.Repeat("x", 8192)
+	request.Command.GetNative().Resource = strings.Repeat("x", 10000)
 	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("maximal Native request rejected", err)
+		t.Fatal("large Native request rejected", err)
 	}
 }
 
-func TestNativeResponseMetadataIsOpaqueWithoutSizeGate(t *testing.T) {
+func TestNativeResponseMetadataIsOpaque(t *testing.T) {
 	for _, metadata := range []*pb.Document{
 		nil,
 		{ContentType: "application/vnd.example.response"},
 		{ContentType: "application/vnd.another.response", Data: []byte{0xff, 0}},
-		{ContentType: "application/http", Data: make([]byte, (3 << 20))},
+		{ContentType: "application/http", Data: make([]byte, 16<<20)},
 	} {
 		head := &pb.NativeHead{Metadata: metadata, BodyContentType: "application/octet-stream"}
 		value := &pb.Event_Head{Head: head}

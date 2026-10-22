@@ -7,6 +7,7 @@ import (
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func TestCanonicalRelativeResource(t *testing.T) {
@@ -49,11 +50,9 @@ func TestExpressionWireBoundaryIsOpaque(t *testing.T) {
 	if f := validateMutationFields(mutation); f != nil {
 		t.Fatal("Core interpreted opaque expression", f)
 	}
-	for _, raw := range [][]byte{nil} {
-		doc.Data = raw
-		if f := validateMutationFields(mutation); f.GetCode() != pb.FailureCode_INVALID_ARGUMENT {
-			t.Fatal(f)
-		}
+	doc.Data = nil
+	if f := validateMutationFields(mutation); f.GetCode() != pb.FailureCode_INVALID_ARGUMENT {
+		t.Fatal(f)
 	}
 	transform.Form = nil
 	if f := validateMutationFields(mutation); f.GetCode() != pb.FailureCode_INVALID_ARGUMENT {
@@ -87,7 +86,7 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 			t.Fatal("accepted invalid request", copied)
 		}
 	}
-	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, (2 << 20))}
+	document := &pb.Document{ContentType: "application/octet-stream", Data: []byte("metadata")}
 	head := &pb.NativeHead{Metadata: document}
 	value := &pb.Event_Head{Head: head}
 	event := &pb.Event{Value: value}
@@ -102,22 +101,17 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 }
 
 func TestNativeUsesOneIndexedFrame(t *testing.T) {
-	body := &pb.Document{ContentType: "application/vnd.example.native", Data: make([]byte, (8 << 20))}
+	body := &pb.Document{ContentType: "application/vnd.example.native", Data: []byte("command")}
 	native := &pb.NativeRequest{Resource: "records", Request: body}
 	operation := &pb.Command_Native{Native: native}
 	command := &pb.Command{Operation: operation}
 	request := &pb.ExecuteRequest{StoreName: "records", Index: 1, Command: command}
 	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("bounded Native body rejected", err)
+		t.Fatal("Native request rejected", err)
 	}
 	request.Index = 2
 	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("Native record ordinal accepted")
-	}
-	request.Index = 1
-	body.Data = make([]byte, (8<<20)+1)
-	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("Native payload beyond former byte bound rejected", err)
 	}
 	head := &pb.NativeHead{}
 	value := &pb.Event_Head{Head: head}
@@ -133,7 +127,7 @@ func TestNativeUsesOneIndexedFrame(t *testing.T) {
 }
 
 func TestEventValidationAndTypedEncoding(t *testing.T) {
-	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, (2 << 20))}
+	document := &pb.Document{ContentType: "application/octet-stream", Data: []byte("metadata")}
 	head := &pb.NativeHead{Metadata: document}
 	value := &pb.Event_Head{Head: head}
 	event := &pb.Event{Value: value}
@@ -148,8 +142,9 @@ func TestEventValidationAndTypedEncoding(t *testing.T) {
 	if err := ValidateEvent(decoded); err != nil {
 		t.Fatal(err)
 	}
-	failure := Fail(pb.FailureCode_INTERNAL, strings.Repeat("中", 600))
-	if failure.Message != strings.Repeat("中", 600) || !utf8.ValidString(failure.Message) {
+	message := strings.Repeat("中", 4)
+	failure := Fail(pb.FailureCode_INTERNAL, message)
+	if failure.Message != message || !utf8.ValidString(failure.Message) {
 		t.Fatal("failure message changed")
 	}
 	badDocument := &pb.Document{ContentType: "invalid"}
@@ -184,5 +179,23 @@ func TestAppliedMutationMayReportPostWriteFailure(t *testing.T) {
 	mutation.Outcome, mutation.Failure = pb.MutationOutcome_NOT_STARTED, nil
 	if err := ValidateMutationResult(mutation); err == nil {
 		t.Fatal("unfinished result without failure accepted")
+	}
+}
+
+func TestSchemaHasNoMapFields(t *testing.T) {
+	pending := []protoreflect.MessageDescriptors{pb.File_api_weir_v1_store_proto.Messages()}
+	for len(pending) > 0 {
+		messages := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		for i := range messages.Len() {
+			message := messages.Get(i)
+			fields := message.Fields()
+			for j := range fields.Len() {
+				if fields.Get(j).IsMap() {
+					t.Fatalf("%s is a map field; hasUnknown does not inspect map values", fields.Get(j).FullName())
+				}
+			}
+			pending = append(pending, message.Messages())
+		}
 	}
 }

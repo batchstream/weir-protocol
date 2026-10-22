@@ -33,7 +33,7 @@ class DependencyTests(unittest.TestCase):
         packages = [{'ImportPath': path} for path in ('github.com/batchstream/weir-protocol/api/protocol', 'github.com/batchstream/weir-protocol/internal/testutil/testdns', 'context')]
         check_dependencies.check_packages(packages)
 
-    def test_raw_graph_rejects_unused_and_old_server_sdk_edges(self):
+    def test_raw_graph_rejects_server_and_sdk_edges(self):
         for edge in (
             'example.com/dep@v1.0.0 github.com/batchstream/weir@v0.1.0',
             'github.com/batchstream/weir-go@v0.1.0 example.com/dep@v2.0.0',

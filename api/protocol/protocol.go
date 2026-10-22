@@ -73,7 +73,6 @@ func unescapedSegmentByte(value byte) bool {
 }
 
 func Fail(code pb.FailureCode, message string) *pb.Failure {
-
 	f := &pb.Failure{Code: code, Message: message}
 	return f
 }
@@ -325,11 +324,6 @@ func hasUnknown(message protoreflect.Message) bool {
 					return false
 				}
 			}
-		} else if field.IsMap() && field.MapValue().Message() != nil {
-			value.Map().Range(func(_ protoreflect.MapKey, entry protoreflect.Value) bool {
-				unknown = hasUnknown(entry.Message())
-				return !unknown
-			})
 		} else if field.Message() != nil {
 			unknown = hasUnknown(value.Message())
 		}

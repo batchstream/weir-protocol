@@ -34,8 +34,8 @@ func LookupHost(ctx context.Context, base *net.Resolver, host string) ([]string,
 	return ips, nil
 }
 
-// A lookup can issue A and AAAA concurrently. Cancellation closes their I/O,
-// and the resolution credit is held until LookupHost and all owned I/O end.
+// A lookup can issue A and AAAA concurrently. Cancellation closes their sockets,
+// and close waits for all owned I/O, so LookupHost returns only after it ends.
 type dnsTransport struct {
 	ctx   context.Context
 	base  *net.Resolver

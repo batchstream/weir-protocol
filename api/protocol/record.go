@@ -72,8 +72,7 @@ func ValidateReadResult(result *pb.ReadResult) error {
 	return nil
 }
 
-// ValidateMutationResult checks current application evidence, failure codes,
-// known fields.
+// ValidateMutationResult checks the outcome, its failure code and known fields.
 func ValidateMutationResult(result *pb.MutationResult) error {
 	if result == nil || hasUnknown(result.ProtoReflect()) || result.Outcome < pb.MutationOutcome_NOT_STARTED || result.Outcome > pb.MutationOutcome_UNKNOWN || !validFailure(result.Failure) {
 		return fmt.Errorf("invalid mutation outcome or failure")
