@@ -16,10 +16,8 @@ It contains no peer discovery protocol, server lifecycle, backend adapter, or SD
 - `api/protocol`: common envelope, endpoint, resource, record, and Native validation.
 - `api/netlimit`: standard Go DNS transport with joined cancellation.
 
-The public schema lives in `api/weir/v1/store.proto`. Go imports and `go_package` use
-`github.com/batchstream/weir-protocol`. Servers and SDKs consume the module's
-generated types. Node-to-node peer schemas and execution DTOs belong to the
-Weir server repository.
+The public schema lives in `api/weir/v1/store.proto`. Servers and SDKs consume
+the module's generated Go types.
 
 ## Streaming semantics
 
@@ -41,7 +39,7 @@ ExecuteResponse with its ordinal and typed result, in input order.
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
 validators check each envelope and nested fields. Requests and responses reject unknown
 fields throughout the message tree. Responses require declared result/event
-variants, enum values and valid completion evidence under the current schema.
+variants, enum values and valid completion evidence.
 
 ReadResult.missing confirms document absence after a successful read.
 TARGET_NOT_FOUND reports a required adapter-owned target that does not exist; it is
@@ -52,7 +50,7 @@ results at the caller's request. Each response confirms one record.
 Store names and resource paths are separate fields. Resource paths use canonical percent-encoded segments without a scheme
 or leading slash. `ParseRelativeResource` validates and decodes these paths;
 `EncodeSegment` constructs individual segments. NativeRequest permits an empty
-resource for backend-root operations. Nonempty Native resources remain canonical
+resource for backend-root operations. Nonempty Native resources are canonical
 prefixes; the request bytes select the backend command, path and parameters.
 Weir imposes no Native operation allowlist; backend authorization applies.
 
@@ -110,23 +108,22 @@ Clients manage continuation requests and backend cursor/PIT cleanup. Native does
 not promise cross-call session affinity, cursor portability, a snapshot, or a
 Weir continuation-token format. Backend protocols and permissions apply.
 
-Read and Mutate retain record batching, per-resource ordering, and application
-evidence. Native remains the direct opaque command path; it does not run record
+Read and Mutate provide record batching, per-resource ordering, and application
+evidence. Native is the direct opaque command path; it does not run record
 batching or Lua transforms. This keeps query execution and pagination policy in
 the backend and its client.
 
 ## Validation rules
 
-The current schema and semantics define one execution contract. Requests and
-responses reject unknown fields throughout the message tree. FailureCode accepts
-only declared nonzero values. MutationOutcome and NativeCompletion require known
+Requests and responses reject unknown fields throughout the message tree.
+FailureCode accepts only declared nonzero values. MutationOutcome and NativeCompletion require known
 evidence values. A known Failure never discards APPLIED evidence or establishes
 retry safety.
 
 Native content types and backend expressions retain adapter-owned
 semantics. Each adapter documents its accepted formats and limits; opaque bytes
 do not waive that contract. Lua helpers, conversions and execution semantics
-follow the current contract.
+follow the Lua contract above.
 
 ## Validate
 
@@ -147,7 +144,7 @@ downloads omit; its extra ZIP checksums stay outside the committed `go.sum`.
 
 Default tests use task-owned loopback DNS and in-memory protocol data. They do not
 contact external endpoints, start databases, or change host DNS. Descriptor tests
-protect the public RPC/field contract and exclude internal peer definitions.
+protect the public RPC and field contract.
 The dependency check examines every selected module, including transitive and
 test requirements, rejects Server/SDK dependencies and replacements, examines
 all raw module-graph edges including versioned protocol return edges, then checks
@@ -174,7 +171,7 @@ Use `PROTOC`, `PROTOC_GEN_GO`, `PROTOC_GEN_GO_GRPC`, and `GOFMT` to select expli
 external tool paths. The script checks compiler/plugin versions and preserves the
 project's named struct style in generated code. It removes unused compatibility
 aliases and unimplemented server scaffolding; implementations provide the complete
-current service interface. Regeneration is byte reproducible.
+service interface. Regeneration is byte reproducible.
 
 ## Publish a stable version
 
