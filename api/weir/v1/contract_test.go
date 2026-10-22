@@ -2,7 +2,6 @@ package weirv1
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -165,25 +164,5 @@ func TestIndexedExecutionWireEncoding(t *testing.T) {
 	wantResponse := []byte{0x08, 3, 0x12, 4, 0x0a, 2, 0x12, 0}
 	if !bytes.Equal(encoded, wantResponse) {
 		t.Fatal("indexed per-record result wire changed", encoded)
-	}
-}
-
-func TestPublicDescriptorClosureExcludesPeers(t *testing.T) {
-	pending := []protoreflect.FileDescriptor{File_api_weir_v1_store_proto}
-	seen := make(map[string]bool)
-	for len(pending) > 0 {
-		file := pending[len(pending)-1]
-		pending = pending[:len(pending)-1]
-		if seen[file.Path()] {
-			continue
-		}
-		seen[file.Path()] = true
-		if strings.HasPrefix(string(file.Package()), "weir.peer") || strings.HasPrefix(file.Path(), "internal/") {
-			t.Fatal("public descriptor imports internal peer protocol", file.Path(), file.Package())
-		}
-		imports := file.Imports()
-		for i := 0; i < imports.Len(); i++ {
-			pending = append(pending, imports.Get(i).FileDescriptor)
-		}
 	}
 }

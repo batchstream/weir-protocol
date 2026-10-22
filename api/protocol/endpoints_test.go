@@ -33,19 +33,17 @@ func TestPortableEndpointValidation(t *testing.T) {
 	}
 }
 
-func TestDiscoveryEndpointCountBeyondFormerLimit(t *testing.T) {
-	endpoints := make([]string, 257)
+func TestCanonicalEndpointsAcceptsLargeSetsAndRejectsEmpty(t *testing.T) {
+	endpoints := make([]string, 1000)
 	for i := range endpoints {
-		endpoints[i] = fmt.Sprintf("replica-%03d.example:7447", i)
+		endpoints[i] = fmt.Sprintf("replica-%04d.example:7447", i)
 	}
 	canonical, err := CanonicalEndpoints(endpoints)
 	if err != nil || len(canonical) != len(endpoints) {
-		t.Fatal("maximum endpoint set rejected", len(canonical), err)
+		t.Fatal("large endpoint set rejected", len(canonical), err)
 	}
-	for _, invalid := range [][]string{nil} {
-		if _, err := CanonicalEndpoints(invalid); err == nil {
-			t.Fatal("endpoint count bound not enforced", len(invalid))
-		}
+	if _, err := CanonicalEndpoints(nil); err == nil {
+		t.Fatal("empty endpoint set accepted")
 	}
 }
 

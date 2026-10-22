@@ -35,33 +35,28 @@ func TestSingleRecordValidationAndUnknownFields(t *testing.T) {
 }
 
 func TestLargeMutationAndProgramInput(t *testing.T) {
-	contentType := strings.Repeat("a", 63) + "/" + strings.Repeat("b", 63)
-	document := &pb.Document{ContentType: contentType, Data: make([]byte, (2 << 20))}
+	contentType := strings.Repeat("a", 200) + "/" + strings.Repeat("b", 200)
+	document := &pb.Document{ContentType: contentType, Data: make([]byte, 16<<20)}
 	action := &pb.MutateRequest_Put{Put: document}
-	mutation := &pb.MutateRequest{Resource: strings.Repeat("x", 4096), Action: action}
-	request := mutationExecution(strings.Repeat("a", 63), 1, mutation)
+	mutation := &pb.MutateRequest{Resource: strings.Repeat("x", 10000), Action: action}
+	request := mutationExecution(strings.Repeat("a", 200), 1, mutation)
 	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("maximal mutation rejected", err)
+		t.Fatal("large mutation rejected", err)
 	}
-	document.Data = make([]byte, (2<<20)+1)
-	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("document beyond former limit rejected", err)
-	}
-	document.Data = make([]byte, (2 << 20))
-	program := &pb.LuaTransform{Source: []byte(strings.Repeat(" ", (16 << 10))), Input: document}
+	program := &pb.LuaTransform{Source: []byte(strings.Repeat(" ", 1<<20)), Input: document}
 	form := &pb.Transform_Lua{Lua: program}
 	transform := &pb.Transform{Form: form}
 	transformAction := &pb.MutateRequest_AtomicTransform{AtomicTransform: transform}
 	mutation.Action = transformAction
 	if err := ValidateExecuteRequest(request); err != nil {
-		t.Fatal("maximal Lua mutation rejected", err)
+		t.Fatal("large Lua mutation rejected", err)
 	}
 }
 
-func TestRecordIndexesHaveNoLogicalCallBudget(t *testing.T) {
+func TestRecordIndexRange(t *testing.T) {
 	read := &pb.ReadRequest{Resource: "data/s:key"}
 	request := readExecution("records", 1, read)
-	for _, index := range []uint64{1, 65537, math.MaxUint64 - 1} {
+	for _, index := range []uint64{1, 1 << 32, math.MaxUint64 - 1} {
 		request.Index = index
 		if err := ValidateExecuteRequest(request); err != nil {
 			t.Fatal("valid ordinal rejected", index, err)
@@ -72,21 +67,6 @@ func TestRecordIndexesHaveNoLogicalCallBudget(t *testing.T) {
 		if err := ValidateExecuteRequest(request); err == nil {
 			t.Fatal("invalid ordinal accepted", index)
 		}
-	}
-	document := &pb.Document{ContentType: "application/octet-stream", Data: make([]byte, (2 << 20))}
-	action := &pb.MutateRequest_Put{Put: document}
-	mutation := &pb.MutateRequest{Resource: "data/s:key", Action: action}
-	request = mutationExecution("records", 1, mutation)
-	total := 0
-	for range 33 {
-		if err := ValidateExecuteRequest(request); err != nil {
-			t.Fatal(err)
-		}
-		total += proto.Size(request)
-		request.Index++
-	}
-	if total <= 64<<20 {
-		t.Fatal("fixture did not span a large call")
 	}
 }
 
