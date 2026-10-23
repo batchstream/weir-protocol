@@ -4,16 +4,17 @@ Shared public schemas, generated Go types, validation, and owned DNS helpers for
 Weir servers and clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.14.0
+go get github.com/batchstream/weir-protocol@v0.15.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
 This module depends on neither repository, including through test dependencies.
-It contains no peer discovery protocol, server lifecycle, backend adapter, or SDK.
+It contains no server lifecycle, backend adapter, or SDK.
 
-- `api/weir/v1`: unary `weir.v1.StoreService.ResolveStore` and bidirectional
-  `Execute` for Read, Mutate, and Native.
-- `api/protocol`: common envelope, endpoint, resource, record, and Native validation.
+- `api/weir/v1`: the bidirectional `weir.v1.StoreService.Execute` RPC for Read,
+  Mutate, and Native. Clients send it to a Weir server that hosts the Store.
+- `api/protocol`: common envelope, Store name, resource, record, and Native
+  validation.
 - `api/netlimit`: standard Go DNS transport with joined cancellation.
 
 The public schema lives in `api/weir/v1/store.proto`. Servers and SDKs consume
@@ -24,8 +25,8 @@ the module's generated Go types.
 Execute selects one Store and operation kind for its lifetime. Each Read or Mutate
 request carries one record. Servers aggregate admitted records into database
 batches; clients send and consume incrementally without collecting a wire batch.
-There is no Weir-imposed item or payload-size limit on business calls or individual
-records. Backend protocols govern accepted documents and commands; gRPC carries
+The protocol imposes no item or payload-size limit on business calls or
+individual records; servers may bound the size of one message. Backend protocols govern accepted documents and commands; gRPC carries
 one request or event per message. Native carries a required opaque Document.
 NativeHead carries optional opaque metadata and a content type for subsequent
 body chunks. Request and metadata bytes are opaque to the public protocol. Their content types select adapter-owned

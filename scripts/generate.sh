@@ -33,7 +33,7 @@ awk '
   print; print "\ts.RegisterService(&StoreService_ServiceDesc, srv)"; print "}"; next
  }
  scaffolding { next }
- registration && /^func _StoreService_ResolveStore_Handler\(/ { registration=0 }
+ registration && /^func _StoreService_Execute_Handler\(/ { registration=0 }
  registration { next }
  $0 == "\treturn &storeServiceClient{cc}" {
   print "\tclient := &storeServiceClient{cc}"; print "\treturn client"; count++; next

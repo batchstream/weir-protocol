@@ -7,12 +7,8 @@ option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 // Requests and responses reject unknown fields recursively. Responses require
 // recognized results/events and enum values.
 
-// StoreService discovers Store endpoints and executes requests on their owners.
-// Initialize through ResolveStore, then connect directly to a returned endpoint.
+// StoreService executes requests on a Weir server that hosts the named Store.
 service StoreService {
-  // ResolveStore returns the current endpoints for one configured Store.
-  rpc ResolveStore(ResolveStoreRequest) returns (ResolveStoreResponse);
-
   // Execute accepts requests and emits indexed results incrementally.
   // A stream selects one Store and operation kind. Each Read or Mutate request
   // carries one record with a consecutive one-based index. It is validated
@@ -26,25 +22,7 @@ service StoreService {
   rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
 }
 
-// ResolveStoreRequest selects the Store whose owner endpoints are required.
-message ResolveStoreRequest {
-  // Configured Store name, independent of the deployment platform.
-  string store_name = 1;
-}
-
-// ResolveStoreResponse supplies addresses for direct execution connections.
-message ResolveStoreResponse {
-  // The Store selected by the request.
-  string store_name = 1;
-
-  // Portable IP or DNS host:port addresses. DNS may identify several replicas.
-  repeated string endpoints = 2;
-
-  // Maximum client cache lifetime for this endpoint set, in milliseconds.
-  uint64 cache_ttl_ms = 3;
-}
-
-// ExecuteRequest binds one operation to its owning Store and index.
+// ExecuteRequest binds one operation to its Store and index.
 message ExecuteRequest {
   // Store that owns all resources; must remain identical throughout the stream.
   string store_name = 1;
