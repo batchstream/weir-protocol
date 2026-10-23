@@ -16,7 +16,7 @@ func TestStoreNames(t *testing.T) {
 			t.Errorf("valid Store name rejected: %q", name)
 		}
 	}
-	for _, name := range []string{"", "Data", "data/path", "data?filter", "data:7447", "a-", "weir://data"} {
+	for _, name := range []string{"", "Data", "1data", "a--b", "data/path", "data?filter", "data:7447", "a-", "weir://data"} {
 		if ValidStoreName(name) {
 			t.Errorf("invalid Store name accepted: %q", name)
 		}

@@ -8,6 +8,7 @@ option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 // recognized results/events and enum values.
 
 // StoreService executes requests on a Weir server that hosts the named Store.
+// A server that does not host the Store fails the RPC with NOT_FOUND.
 service StoreService {
   // Execute accepts requests and emits indexed results incrementally.
   // A stream selects one Store and operation kind. Each Read or Mutate request

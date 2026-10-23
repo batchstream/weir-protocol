@@ -1,7 +1,7 @@
 # Weir public protocol
 
-Shared public schemas, generated Go types, validation, and owned DNS helpers for
-Weir servers and clients. Requires Go 1.27.1.
+Shared public schemas, generated Go types and validation for Weir servers and
+clients. Requires Go 1.27.1.
 
 ```sh
 go get github.com/batchstream/weir-protocol@v0.15.0
@@ -12,26 +12,28 @@ This module depends on neither repository, including through test dependencies.
 It contains no server lifecycle, backend adapter, or SDK.
 
 - `api/weir/v1`: the bidirectional `weir.v1.StoreService.Execute` RPC for Read,
-  Mutate, and Native. Clients send it to a Weir server that hosts the Store.
+  Mutate, and Native. Clients send it to a Weir server that hosts the Store; any
+  other server fails the RPC with NOT_FOUND.
 - `api/protocol`: common envelope, Store name, resource, record, and Native
   validation.
-- `api/netlimit`: standard Go DNS transport with joined cancellation.
 
 The public schema lives in `api/weir/v1/store.proto`. Servers and SDKs consume
 the module's generated Go types.
 
 ## Streaming semantics
 
-Execute selects one Store and operation kind for its lifetime. Each Read or Mutate
-request carries one record. Servers aggregate admitted records into database
-batches; clients send and consume incrementally without collecting a wire batch.
-The protocol imposes no item or payload-size limit on business calls or
-individual records; servers may bound the size of one message. Backend protocols govern accepted documents and commands; gRPC carries
-one request or event per message. Native carries a required opaque Document.
-NativeHead carries optional opaque metadata and a content type for subsequent
-body chunks. Request and metadata bytes are opaque to the public protocol. Their content types select adapter-owned
-formats; new adapters need no protobuf fields or schema changes. Empty request
-data is permitted. Unknown valid content types are left to the selected adapter.
+Execute selects one Store and operation kind for its lifetime. Each Read or
+Mutate request carries one record. Servers aggregate admitted records into
+database batches; clients send and consume incrementally without collecting a
+wire batch. The protocol imposes no item or payload-size limit on business calls
+or individual records; servers may bound the size of one message. Backend
+protocols govern accepted documents and commands; gRPC carries one request or
+event per message. Native carries a required opaque Document. NativeHead carries
+optional opaque metadata and a content type for subsequent body chunks. Request
+and metadata bytes are opaque to the public protocol. Their content types select
+adapter-owned formats; new adapters need no protobuf fields or schema changes.
+Empty request data is permitted. Unknown valid content types are left to the
+selected adapter.
 
 Each request is validated before execution. Earlier requests may have effects
 when a later request fails validation. The first record index is 1; every later
@@ -143,8 +145,8 @@ Prepare the complete module cache in a temporary module copy before disabling
 network access. `download all` includes graph/test metadata that lazy runtime
 downloads omit; its extra ZIP checksums stay outside the committed `go.sum`.
 
-Default tests use task-owned loopback DNS and in-memory protocol data. They do not
-contact external endpoints, start databases, or change host DNS. Descriptor tests
+Default tests use in-memory protocol data. They do not contact external
+endpoints or start databases. Descriptor tests
 protect the public RPC and field contract.
 The dependency check examines every selected module, including transitive and
 test requirements, rejects Server/SDK dependencies and replacements, examines

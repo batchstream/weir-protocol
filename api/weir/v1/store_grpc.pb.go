@@ -25,6 +25,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // StoreService executes requests on a Weir server that hosts the named Store.
+// A server that does not host the Store fails the RPC with NOT_FOUND.
 type StoreServiceClient interface {
 	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
@@ -61,6 +62,7 @@ func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOptio
 // StoreServiceServer is the server API for StoreService service.
 //
 // StoreService executes requests on a Weir server that hosts the named Store.
+// A server that does not host the Store fails the RPC with NOT_FOUND.
 type StoreServiceServer interface {
 	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
