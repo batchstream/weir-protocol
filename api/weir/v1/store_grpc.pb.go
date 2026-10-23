@@ -17,19 +17,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StoreService_ResolveStore_FullMethodName = "/weir.v1.StoreService/ResolveStore"
-	StoreService_Execute_FullMethodName      = "/weir.v1.StoreService/Execute"
+	StoreService_Execute_FullMethodName = "/weir.v1.StoreService/Execute"
 )
 
 // StoreServiceClient is the client API for StoreService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// StoreService discovers Store endpoints and executes requests on their owners.
-// Initialize through ResolveStore, then connect directly to a returned endpoint.
+// StoreService executes requests on a Weir server that hosts the named Store.
+// A server that does not host the Store fails the RPC with NOT_FOUND.
 type StoreServiceClient interface {
-	// ResolveStore returns the current endpoints for one configured Store.
-	ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error)
 	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index. It is validated
@@ -52,16 +49,6 @@ func NewStoreServiceClient(cc grpc.ClientConnInterface) StoreServiceClient {
 	return client
 }
 
-func (c *storeServiceClient) ResolveStore(ctx context.Context, in *ResolveStoreRequest, opts ...grpc.CallOption) (*ResolveStoreResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ResolveStoreResponse)
-	err := c.cc.Invoke(ctx, StoreService_ResolveStore_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &StoreService_ServiceDesc.Streams[0], StoreService_Execute_FullMethodName, cOpts...)
@@ -74,11 +61,9 @@ func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOptio
 
 // StoreServiceServer is the server API for StoreService service.
 //
-// StoreService discovers Store endpoints and executes requests on their owners.
-// Initialize through ResolveStore, then connect directly to a returned endpoint.
+// StoreService executes requests on a Weir server that hosts the named Store.
+// A server that does not host the Store fails the RPC with NOT_FOUND.
 type StoreServiceServer interface {
-	// ResolveStore returns the current endpoints for one configured Store.
-	ResolveStore(context.Context, *ResolveStoreRequest) (*ResolveStoreResponse, error)
 	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index. It is validated
@@ -95,24 +80,6 @@ type StoreServiceServer interface {
 func RegisterStoreServiceServer(s grpc.ServiceRegistrar, srv StoreServiceServer) {
 	s.RegisterService(&StoreService_ServiceDesc, srv)
 }
-func _StoreService_ResolveStore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ResolveStoreRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StoreServiceServer).ResolveStore(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StoreService_ResolveStore_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StoreServiceServer).ResolveStore(ctx, req.(*ResolveStoreRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _StoreService_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
 	serverStream := &grpc.GenericServerStream[ExecuteRequest, ExecuteResponse]{ServerStream: stream}
 	return srv.(StoreServiceServer).Execute(serverStream)
@@ -124,12 +91,7 @@ func _StoreService_Execute_Handler(srv interface{}, stream grpc.ServerStream) er
 var StoreService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "weir.v1.StoreService",
 	HandlerType: (*StoreServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "ResolveStore",
-			Handler:    _StoreService_ResolveStore_Handler,
-		},
-	},
+	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Execute",

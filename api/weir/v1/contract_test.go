@@ -51,24 +51,16 @@ func TestPublicStoreContract(t *testing.T) {
 	if service == nil {
 		t.Fatal("public Store service missing")
 	}
-	if service.Methods().Len() != 2 || len(StoreService_ServiceDesc.Streams) != 1 || StoreService_ServiceDesc.Streams[0].StreamName != "Execute" {
+	if service.Methods().Len() != 1 || len(StoreService_ServiceDesc.Methods) != 0 || len(StoreService_ServiceDesc.Streams) != 1 || StoreService_ServiceDesc.Streams[0].StreamName != "Execute" {
 		t.Fatal("public service must expose exactly one Execute RPC")
 	}
-	resolve := service.Methods().ByName("ResolveStore")
 	execute := service.Methods().ByName("Execute")
-	if resolve == nil || resolve.Input().FullName() != "weir.v1.ResolveStoreRequest" || resolve.Output().FullName() != "weir.v1.ResolveStoreResponse" || resolve.IsStreamingClient() || resolve.IsStreamingServer() {
-		t.Fatal("ResolveStore unary contract changed", resolve)
-	}
 	if execute == nil || execute.Input().FullName() != "weir.v1.ExecuteRequest" || execute.Output().FullName() != "weir.v1.ExecuteResponse" || !execute.IsStreamingClient() || !execute.IsStreamingServer() {
 		t.Fatal("Execute bidirectional contract changed", execute)
 	}
-	if StoreService_ResolveStore_FullMethodName != "/weir.v1.StoreService/ResolveStore" || StoreService_Execute_FullMethodName != "/weir.v1.StoreService/Execute" {
-		t.Fatal("generated public method paths changed")
+	if StoreService_Execute_FullMethodName != "/weir.v1.StoreService/Execute" {
+		t.Fatal("generated public method path changed")
 	}
-	request := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}}
-	assertFields(t, resolve.Input(), request)
-	response := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "endpoints", kind: protoreflect.StringKind, repeated: true}, {name: "cache_ttl_ms", kind: protoreflect.Uint64Kind}}
-	assertFields(t, resolve.Output(), response)
 	executeRequest := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "index", kind: protoreflect.Uint64Kind}, {name: "command", kind: protoreflect.MessageKind, message: "weir.v1.Command"}}
 	assertFields(t, execute.Input(), executeRequest)
 	executeResponse := []fieldContract{{name: "index", kind: protoreflect.Uint64Kind}, {name: "event", kind: protoreflect.MessageKind, message: "weir.v1.Event"}}

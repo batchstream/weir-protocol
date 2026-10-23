@@ -23,6 +23,12 @@ const MaxTransportMessageBytes = int(^uint(0) >> 1)
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9])*$`)
 var mediaPattern = regexp.MustCompile(`^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$`)
 
+// ValidStoreName reports whether name is a well-formed Store name: a lowercase
+// letter followed by lowercase letters, digits and single internal hyphens.
+func ValidStoreName(name string) bool {
+	return storePattern.MatchString(name)
+}
+
 // ParseRelativeResource validates a canonical Store-relative path and returns its
 // decoded segments. Store identity is supplied separately by the request envelope.
 func ParseRelativeResource(resource string) ([]string, error) {

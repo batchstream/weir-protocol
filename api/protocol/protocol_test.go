@@ -10,6 +10,19 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
+func TestStoreNames(t *testing.T) {
+	for _, name := range []string{"data", "mongo-1", strings.Repeat("a", 128)} {
+		if !ValidStoreName(name) {
+			t.Errorf("valid Store name rejected: %q", name)
+		}
+	}
+	for _, name := range []string{"", "Data", "1data", "a--b", "data/path", "data?filter", "data:7447", "a-", "weir://data"} {
+		if ValidStoreName(name) {
+			t.Errorf("invalid Store name accepted: %q", name)
+		}
+	}
+}
+
 func TestCanonicalRelativeResource(t *testing.T) {
 	valid := []string{"db/c/s:a%2Fb", "a/s:%E4%B8%AD", "a/i:-3", "records"}
 	for _, resource := range valid {

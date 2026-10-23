@@ -29,8 +29,8 @@ class DependencyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Server or SDK'):
                 check_dependencies.check_packages(packages)
 
-    def test_own_fixture_and_api_are_allowed(self):
-        packages = [{'ImportPath': path} for path in ('github.com/batchstream/weir-protocol/api/protocol', 'github.com/batchstream/weir-protocol/internal/testutil/testdns', 'context')]
+    def test_own_api_is_allowed(self):
+        packages = [{'ImportPath': path} for path in ('github.com/batchstream/weir-protocol/api/protocol', 'github.com/batchstream/weir-protocol/api/weir/v1', 'context')]
         check_dependencies.check_packages(packages)
 
     def test_raw_graph_rejects_server_and_sdk_edges(self):
