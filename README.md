@@ -131,28 +131,14 @@ follow the Lua contract above.
 ## Validate
 
 ```sh
-module_dir=$(mktemp -d)
-cp go.mod go.sum "$module_dir/"
-(cd "$module_dir" && GOWORK=off go mod download all)
-GOWORK=off GOPROXY=off GOSUMDB=off go mod verify
-GOWORK=off GOPROXY=off GOSUMDB=off go test -race -count=1 ./...
-GOWORK=off GOPROXY=off GOSUMDB=off go vet ./...
-GOWORK=off GOPROXY=off GOSUMDB=off python3 scripts/check_dependencies.py
-python3 -m unittest discover -s scripts -p '*_test.py'
+go test -race ./...
+go vet ./...
 ```
 
-Prepare the complete module cache in a temporary module copy before disabling
-network access. `download all` includes graph/test metadata that lazy runtime
-downloads omit; its extra ZIP checksums stay outside the committed `go.sum`.
-
 Default tests use in-memory protocol data. They do not contact external
-endpoints or start databases. Descriptor tests
-protect the public RPC and field contract.
-The dependency check examines every selected module, including transitive and
-test requirements, rejects Server/SDK dependencies and replacements, examines
-all raw module-graph edges including versioned protocol return edges, then checks
-the complete production and test package graph. It forces workspace mode off
-for every Go subprocess so unrelated checkouts cannot mask module boundaries.
+endpoints or start databases. Descriptor tests protect the public RPC and field
+contract. CI also checks that the module graph contains neither the server nor
+the SDK.
 
 ## Generate
 
@@ -184,9 +170,7 @@ After the reviewed change is merged, an authorized maintainer can publish:
 gh workflow run release.yml --ref main -f version=vX.Y.Z
 ```
 
-The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions and runs the complete
-offline CI before publication. Its read-only preflight requires a clean checkout,
-the validated commit to still be the current remote `main`, and no existing tag
-for that version. It then creates the GitHub release and tag at that exact commit.
-The preflight script itself never publishes, tags, or pushes. Protocol consumers
-should pin the published version rather than a branch name.
+The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions, runs CI on the
+`main` commit, then creates the version tag at that commit and its GitHub release.
+Creating the tag fails when the version already exists. Protocol consumers should
+pin the published version rather than a branch name.
