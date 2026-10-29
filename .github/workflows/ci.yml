@@ -24,9 +24,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: The protocol depends on neither the server nor the SDK
+      - name: The protocol depends on neither the server nor the SDK and replaces nothing
         run: |
-          forbidden=$(go list -m -f '{{if or (eq .Path "github.com/batchstream/weir") (eq .Path "github.com/batchstream/weir-go")}}{{.Path}}{{end}}' all)
+          forbidden=$(go list -m -f '{{if or .Replace (eq .Path "github.com/batchstream/weir") (eq .Path "github.com/batchstream/weir-go")}}{{.Path}}{{end}}' all)
           echo "$forbidden"
           test -z "$forbidden"
       - name: Tests, vet and formatting

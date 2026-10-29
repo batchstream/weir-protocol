@@ -138,7 +138,7 @@ go vet ./...
 Default tests use in-memory protocol data. They do not contact external
 endpoints or start databases. Descriptor tests protect the public RPC and field
 contract. CI also checks that the module graph contains neither the server nor
-the SDK.
+the SDK and that `go.mod` replaces no module.
 
 ## Generate
 
@@ -172,5 +172,5 @@ gh workflow run release.yml --ref main -f version=vX.Y.Z
 
 The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions, runs CI on the
 `main` commit, then creates the version tag at that commit and its GitHub release.
-Creating the tag fails when the version already exists. Protocol consumers should
+It refuses a version already tagged at another commit. Protocol consumers should
 pin the published version rather than a branch name.
