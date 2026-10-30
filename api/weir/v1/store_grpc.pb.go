@@ -28,6 +28,9 @@ const (
 // A server that does not host the Store fails the RPC with NOT_FOUND.
 type StoreServiceClient interface {
 	// Execute accepts requests and emits indexed results incrementally.
+	// Each message carries one or more requests or responses in order. A peer
+	// handles each exactly as if it came in a message of its own, so a sender
+	// can pack everything it has ready into one message.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index and receives at most
 	// one result, in completion order; consumers match results by index. A
@@ -48,7 +51,7 @@ type StoreServiceClient interface {
 	// Never automatically replay mutations without individual application evidence.
 	// Native accepts exactly one request with index 1 followed by half-close and
 	// streams opaque response metadata, body chunks, and transport completion.
-	Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error)
+	Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequests, ExecuteResponses], error)
 }
 
 type storeServiceClient struct {
@@ -60,13 +63,13 @@ func NewStoreServiceClient(cc grpc.ClientConnInterface) StoreServiceClient {
 	return client
 }
 
-func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequest, ExecuteResponse], error) {
+func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecuteRequests, ExecuteResponses], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &StoreService_ServiceDesc.Streams[0], StoreService_Execute_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ExecuteRequest, ExecuteResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ExecuteRequests, ExecuteResponses]{ClientStream: stream}
 	return x, nil
 }
 
@@ -76,6 +79,9 @@ func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOptio
 // A server that does not host the Store fails the RPC with NOT_FOUND.
 type StoreServiceServer interface {
 	// Execute accepts requests and emits indexed results incrementally.
+	// Each message carries one or more requests or responses in order. A peer
+	// handles each exactly as if it came in a message of its own, so a sender
+	// can pack everything it has ready into one message.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
 	// carries one record with a consecutive one-based index and receives at most
 	// one result, in completion order; consumers match results by index. A
@@ -96,14 +102,14 @@ type StoreServiceServer interface {
 	// Never automatically replay mutations without individual application evidence.
 	// Native accepts exactly one request with index 1 followed by half-close and
 	// streams opaque response metadata, body chunks, and transport completion.
-	Execute(grpc.BidiStreamingServer[ExecuteRequest, ExecuteResponse]) error
+	Execute(grpc.BidiStreamingServer[ExecuteRequests, ExecuteResponses]) error
 }
 
 func RegisterStoreServiceServer(s grpc.ServiceRegistrar, srv StoreServiceServer) {
 	s.RegisterService(&StoreService_ServiceDesc, srv)
 }
 func _StoreService_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
-	serverStream := &grpc.GenericServerStream[ExecuteRequest, ExecuteResponse]{ServerStream: stream}
+	serverStream := &grpc.GenericServerStream[ExecuteRequests, ExecuteResponses]{ServerStream: stream}
 	return srv.(StoreServiceServer).Execute(serverStream)
 }
 

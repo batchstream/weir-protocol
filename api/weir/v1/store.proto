@@ -11,6 +11,9 @@ option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 // A server that does not host the Store fails the RPC with NOT_FOUND.
 service StoreService {
   // Execute accepts requests and emits indexed results incrementally.
+  // Each message carries one or more requests or responses in order. A peer
+  // handles each exactly as if it came in a message of its own, so a sender
+  // can pack everything it has ready into one message.
   // A stream selects one Store and operation kind. Each Read or Mutate request
   // carries one record with a consecutive one-based index and receives at most
   // one result, in completion order; consumers match results by index. A
@@ -31,7 +34,19 @@ service StoreService {
   // Never automatically replay mutations without individual application evidence.
   // Native accepts exactly one request with index 1 followed by half-close and
   // streams opaque response metadata, body chunks, and transport completion.
-  rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
+  rpc Execute(stream ExecuteRequests) returns (stream ExecuteResponses);
+}
+
+// ExecuteRequests carries requests of one stream in order.
+message ExecuteRequests {
+  // One or more requests, in stream order.
+  repeated ExecuteRequest requests = 1;
+}
+
+// ExecuteResponses carries responses of one stream in order.
+message ExecuteResponses {
+  // One or more responses, in stream order.
+  repeated ExecuteResponse responses = 1;
 }
 
 // ExecuteRequest carries one operation with its Store and index, or cancels an

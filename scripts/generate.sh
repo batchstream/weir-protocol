@@ -39,7 +39,7 @@ awk '
   print "\tclient := &storeServiceClient{cc}"; print "\treturn client"; count++; next
  }
  index($0,"\treturn srv.(StoreServiceServer).Execute(&grpc.GenericServerStream") == 1 {
-  print "\tserverStream := &grpc.GenericServerStream[ExecuteRequest, ExecuteResponse]{ServerStream: stream}"
+  print "\tserverStream := &grpc.GenericServerStream[ExecuteRequests, ExecuteResponses]{ServerStream: stream}"
   print "\treturn srv.(StoreServiceServer).Execute(serverStream)"; count++; next
  }
  { print }
