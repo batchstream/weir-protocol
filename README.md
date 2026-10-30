@@ -4,7 +4,7 @@ Shared public schemas, generated Go types and validation for Weir servers and
 clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.16.0
+go get github.com/batchstream/weir-protocol@v0.17.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -27,13 +27,19 @@ Mutate request carries one record. Servers aggregate admitted records into
 database batches; clients send and consume incrementally without collecting a
 wire batch. The protocol imposes no item or payload-size limit on business calls
 or individual records; servers may bound the size of one message. Backend
-protocols govern accepted documents and commands; gRPC carries one request or
-event per message. Native carries a required opaque Document. NativeHead carries
-optional opaque metadata and a content type for subsequent body chunks. Request
-and metadata bytes are opaque to the public protocol. Their content types select
-adapter-owned formats; new adapters need no protobuf fields or schema changes.
-Empty request data is permitted. Unknown valid content types are left to the
-selected adapter.
+protocols govern accepted documents and commands. Native carries a required
+opaque Document. NativeHead carries optional opaque metadata and a content type
+for subsequent body chunks. Request and metadata bytes are opaque to the public
+protocol. Their content types select adapter-owned formats; new adapters need no
+protobuf fields or schema changes. Empty request data is permitted. Unknown
+valid content types are left to the selected adapter.
+
+Each gRPC message, `ExecuteRequests` or `ExecuteResponses`, carries one or more
+requests or responses in stream order. A peer handles each exactly as if it came
+in a message of its own, so a sender packs everything it has ready into one
+message instead of paying for a message per record. `ValidateExecuteRequests`
+and `ValidateExecuteResponses` check a message's own envelope; its requests and
+responses are validated one at a time as they are applied.
 
 Each request is validated before execution. A record the server cannot admit,
 such as one its adapter rejects or one sent while the Store drains, receives its

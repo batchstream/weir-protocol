@@ -55,16 +55,20 @@ func TestPublicStoreContract(t *testing.T) {
 		t.Fatal("public service must expose exactly one Execute RPC")
 	}
 	execute := service.Methods().ByName("Execute")
-	if execute == nil || execute.Input().FullName() != "weir.v1.ExecuteRequest" || execute.Output().FullName() != "weir.v1.ExecuteResponse" || !execute.IsStreamingClient() || !execute.IsStreamingServer() {
+	if execute == nil || execute.Input().FullName() != "weir.v1.ExecuteRequests" || execute.Output().FullName() != "weir.v1.ExecuteResponses" || !execute.IsStreamingClient() || !execute.IsStreamingServer() {
 		t.Fatal("Execute bidirectional contract changed", execute)
 	}
 	if StoreService_Execute_FullMethodName != "/weir.v1.StoreService/Execute" {
 		t.Fatal("generated public method path changed")
 	}
+	requests := []fieldContract{{name: "requests", kind: protoreflect.MessageKind, message: "weir.v1.ExecuteRequest", repeated: true}}
+	assertFields(t, execute.Input(), requests)
+	responses := []fieldContract{{name: "responses", kind: protoreflect.MessageKind, message: "weir.v1.ExecuteResponse", repeated: true}}
+	assertFields(t, execute.Output(), responses)
 	executeRequest := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "index", kind: protoreflect.Uint64Kind}, {name: "command", kind: protoreflect.MessageKind, message: "weir.v1.Command"}, {name: "timeout_micros", kind: protoreflect.Uint64Kind}, {name: "cancel_index", kind: protoreflect.Uint64Kind}}
-	assertFields(t, execute.Input(), executeRequest)
+	assertFields(t, execute.Input().Fields().ByName("requests").Message(), executeRequest)
 	executeResponse := []fieldContract{{name: "index", kind: protoreflect.Uint64Kind}, {name: "event", kind: protoreflect.MessageKind, message: "weir.v1.Event"}}
-	assertFields(t, execute.Output(), executeResponse)
+	assertFields(t, execute.Output().Fields().ByName("responses").Message(), executeResponse)
 }
 
 func TestPublicCommandAndEventContract(t *testing.T) {
@@ -143,6 +147,15 @@ func TestIndexedExecutionWireEncoding(t *testing.T) {
 	if !bytes.Equal(encoded, wantRequest) {
 		t.Fatal("indexed execution wire changed", encoded)
 	}
+	requests := &ExecuteRequests{Requests: []*ExecuteRequest{request, request}}
+	encoded, err = proto.Marshal(requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packedRequest := append([]byte{0x0a, byte(len(wantRequest))}, wantRequest...)
+	if !bytes.Equal(encoded, append(packedRequest, packedRequest...)) {
+		t.Fatal("packed execution wire changed", encoded)
+	}
 	empty := &Empty{}
 	missing := &ReadResult_Missing{Missing: empty}
 	result := &ReadResult{Result: missing}
@@ -156,5 +169,13 @@ func TestIndexedExecutionWireEncoding(t *testing.T) {
 	wantResponse := []byte{0x08, 3, 0x12, 4, 0x0a, 2, 0x12, 0}
 	if !bytes.Equal(encoded, wantResponse) {
 		t.Fatal("indexed per-record result wire changed", encoded)
+	}
+	responses := &ExecuteResponses{Responses: []*ExecuteResponse{response}}
+	encoded, err = proto.Marshal(responses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encoded, append([]byte{0x0a, byte(len(wantResponse))}, wantResponse...)) {
+		t.Fatal("packed per-record result wire changed", encoded)
 	}
 }

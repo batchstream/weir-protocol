@@ -115,6 +115,39 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 	}
 }
 
+func TestMessagesCarryAtLeastOneRequestOrResponse(t *testing.T) {
+	request := &pb.ExecuteRequest{StoreName: "records", CancelIndex: 1}
+	requests := &pb.ExecuteRequests{Requests: []*pb.ExecuteRequest{request}}
+	if err := ValidateExecuteRequests(requests); err != nil {
+		t.Fatal(err)
+	}
+	// Requests are validated one at a time as they are applied.
+	invalid := &pb.ExecuteRequest{}
+	requests.Requests = append(requests.Requests, invalid)
+	if err := ValidateExecuteRequests(requests); err != nil {
+		t.Fatal(err)
+	}
+	requests.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
+	empty := &pb.ExecuteRequests{}
+	for _, message := range []*pb.ExecuteRequests{nil, empty, requests} {
+		if err := ValidateExecuteRequests(message); err == nil {
+			t.Fatal("accepted invalid request message", message)
+		}
+	}
+	response := &pb.ExecuteResponse{Index: 1}
+	responses := &pb.ExecuteResponses{Responses: []*pb.ExecuteResponse{response}}
+	if err := ValidateExecuteResponses(responses); err != nil {
+		t.Fatal(err)
+	}
+	responses.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1})
+	emptyResponses := &pb.ExecuteResponses{}
+	for _, message := range []*pb.ExecuteResponses{nil, emptyResponses, responses} {
+		if err := ValidateExecuteResponses(message); err == nil {
+			t.Fatal("accepted invalid response message", message)
+		}
+	}
+}
+
 func TestCancelRequestCarriesOnlyItsStoreAndIndex(t *testing.T) {
 	request := &pb.ExecuteRequest{StoreName: "records", CancelIndex: 3}
 	if err := ValidateExecuteRequest(request); err != nil {

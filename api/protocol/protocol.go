@@ -203,6 +203,27 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 	return end
 }
 
+// ValidateExecuteRequests checks one request message's own envelope: at least
+// one request and no unknown fields of its own. Consumers validate and apply
+// its requests in order with ValidateExecuteRequest, exactly as if each came in
+// a message of its own.
+func ValidateExecuteRequests(message *pb.ExecuteRequests) error {
+	if message == nil || len(message.Requests) == 0 || len(message.ProtoReflect().GetUnknown()) != 0 {
+		return fmt.Errorf("invalid Execute request message")
+	}
+	return nil
+}
+
+// ValidateExecuteResponses checks one response message's own envelope: at
+// least one response and no unknown fields of its own. Consumers validate and
+// apply its responses in order with ValidateExecuteResponse.
+func ValidateExecuteResponses(message *pb.ExecuteResponses) error {
+	if message == nil || len(message.Responses) == 0 || len(message.ProtoReflect().GetUnknown()) != 0 {
+		return fmt.Errorf("invalid Execute response message")
+	}
+	return nil
+}
+
 // ValidateExecuteRequest validates one record or cancel request without
 // retaining stream state. Callers enforce a fixed Store/kind, consecutive
 // indexes and cancel requests that name earlier records.
