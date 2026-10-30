@@ -1,8 +1,10 @@
 package protocol
 
 import (
+	"math"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
@@ -113,6 +115,46 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 	}
 }
 
+func TestCancelRequestCarriesOnlyItsStoreAndIndex(t *testing.T) {
+	request := &pb.ExecuteRequest{StoreName: "records", CancelIndex: 3}
+	if err := ValidateExecuteRequest(request); err != nil {
+		t.Fatal("cancel request rejected", err)
+	}
+	invalid := []func(*pb.ExecuteRequest){
+		func(r *pb.ExecuteRequest) { r.StoreName = "" },
+		func(r *pb.ExecuteRequest) { r.CancelIndex = math.MaxUint64 },
+		func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
+	}
+	// Every other field, including one added later, must stay unset.
+	fields := request.ProtoReflect().Descriptor().Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		if field.Name() == "store_name" || field.Name() == "cancel_index" {
+			continue
+		}
+		invalid = append(invalid, func(r *pb.ExecuteRequest) {
+			message := r.ProtoReflect()
+			switch field.Kind() {
+			case protoreflect.MessageKind:
+				message.Set(field, protoreflect.ValueOfMessage(message.NewField(field).Message()))
+			case protoreflect.StringKind:
+				message.Set(field, protoreflect.ValueOfString("x"))
+			case protoreflect.Uint64Kind:
+				message.Set(field, protoreflect.ValueOfUint64(1))
+			default:
+				t.Fatal("cancel test cannot populate field", field.FullName())
+			}
+		})
+	}
+	for _, mutate := range invalid {
+		copied := proto.Clone(request).(*pb.ExecuteRequest)
+		mutate(copied)
+		if err := ValidateExecuteRequest(copied); err == nil {
+			t.Fatal("accepted invalid cancel request", copied)
+		}
+	}
+}
+
 func TestNativeUsesOneIndexedFrame(t *testing.T) {
 	body := &pb.Document{ContentType: "application/vnd.example.native", Data: []byte("command")}
 	native := &pb.NativeRequest{Resource: "records", Request: body}
@@ -125,6 +167,10 @@ func TestNativeUsesOneIndexedFrame(t *testing.T) {
 	request.Index = 2
 	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("Native record ordinal accepted")
+	}
+	request.Index, request.TimeoutMicros = 1, 1
+	if err := ValidateExecuteRequest(request); err == nil {
+		t.Fatal("Native record timeout accepted")
 	}
 	head := &pb.NativeHead{}
 	value := &pb.Event_Head{Head: head}
@@ -209,6 +255,46 @@ func TestSchemaHasNoMapFields(t *testing.T) {
 				}
 			}
 			pending = append(pending, message.Messages())
+		}
+	}
+}
+
+func TestRecordTimeoutNeverShortensOrDisablesTheCallerBudget(t *testing.T) {
+	read := &pb.ReadRequest{Resource: "records/a"}
+	request := readExecution("records", 1, read)
+	request.TimeoutMicros = math.MaxUint64
+	if err := ValidateExecuteRequest(request); err != nil {
+		t.Fatal("record timeout rejected", err)
+	}
+	cases := []struct {
+		remaining time.Duration
+		micros    uint64
+	}{
+		{remaining: -time.Second, micros: 1},
+		{remaining: 0, micros: 1},
+		{remaining: time.Nanosecond, micros: 1},
+		{remaining: time.Microsecond + time.Nanosecond, micros: 2},
+		{remaining: 3 * time.Second, micros: 3_000_000},
+		{remaining: math.MaxInt64, micros: math.MaxInt64/1000 + 1},
+	}
+	for _, c := range cases {
+		if got := TimeoutMicros(c.remaining); got != c.micros {
+			t.Fatalf("TimeoutMicros(%v) = %d, want %d", c.remaining, got, c.micros)
+		}
+	}
+	durations := []struct {
+		micros    uint64
+		remaining time.Duration
+	}{
+		{micros: 0, remaining: 0},
+		{micros: 3_000_000, remaining: 3 * time.Second},
+		{micros: math.MaxInt64 / 1000, remaining: math.MaxInt64 / 1000 * time.Microsecond},
+		{micros: math.MaxInt64/1000 + 1, remaining: math.MaxInt64},
+		{micros: math.MaxUint64, remaining: math.MaxInt64},
+	}
+	for _, c := range durations {
+		if got := RecordTimeout(c.micros); got != c.remaining {
+			t.Fatalf("RecordTimeout(%d) = %v, want %v", c.micros, got, c.remaining)
 		}
 	}
 }

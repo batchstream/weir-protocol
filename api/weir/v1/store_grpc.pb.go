@@ -29,8 +29,19 @@ const (
 type StoreServiceClient interface {
 	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
-	// carries one record with a consecutive one-based index. It is validated
-	// before execution; earlier records may have effects before a later one fails.
+	// carries one record with a consecutive one-based index and receives at most
+	// one result, in completion order; consumers match results by index. A
+	// record the server cannot admit, such as one its adapter rejects, receives
+	// its own failed result, NOT_STARTED for a mutation, and the stream
+	// continues. A request that fails validation, changes the Store or kind,
+	// breaks the index sequence or cancels a record not yet sent fails the RPC
+	// with INVALID_ARGUMENT after the results of the records admitted before it.
+	// A record without a result when the RPC fails may still have effects. A
+	// cancel request cancels one earlier record without ending the stream.
+	// Each stream has room for 32 records without results, whatever the Store
+	// queue holds. A client that never has more than 32 records without results
+	// is never held back by the server's window, so its cancel requests take
+	// effect once they arrive; a further record waits until a result frees room.
 	// Mutations to the same resource preserve input order across requests, including
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.
@@ -66,8 +77,19 @@ func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOptio
 type StoreServiceServer interface {
 	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
-	// carries one record with a consecutive one-based index. It is validated
-	// before execution; earlier records may have effects before a later one fails.
+	// carries one record with a consecutive one-based index and receives at most
+	// one result, in completion order; consumers match results by index. A
+	// record the server cannot admit, such as one its adapter rejects, receives
+	// its own failed result, NOT_STARTED for a mutation, and the stream
+	// continues. A request that fails validation, changes the Store or kind,
+	// breaks the index sequence or cancels a record not yet sent fails the RPC
+	// with INVALID_ARGUMENT after the results of the records admitted before it.
+	// A record without a result when the RPC fails may still have effects. A
+	// cancel request cancels one earlier record without ending the stream.
+	// Each stream has room for 32 records without results, whatever the Store
+	// queue holds. A client that never has more than 32 records without results
+	// is never held back by the server's window, so its cancel requests take
+	// effect once they arrive; a further record waits until a result frees room.
 	// Mutations to the same resource preserve input order across requests, including
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.

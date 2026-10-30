@@ -4,7 +4,7 @@ Shared public schemas, generated Go types and validation for Weir servers and
 clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.15.0
+go get github.com/batchstream/weir-protocol@v0.16.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -35,10 +35,44 @@ adapter-owned formats; new adapters need no protobuf fields or schema changes.
 Empty request data is permitted. Unknown valid content types are left to the
 selected adapter.
 
-Each request is validated before execution. Earlier requests may have effects
-when a later request fails validation. The first record index is 1; every later
-request advances it by one. UINT64_MAX is invalid. Every record produces one
-ExecuteResponse with its ordinal and typed result, in input order.
+Each request is validated before execution. A record the server cannot admit,
+such as one its adapter rejects or one sent while the Store drains, receives its
+own failed result, NOT_STARTED for a mutation, and the stream continues. A
+request that fails `ValidateExecuteRequest`, changes the Store or kind, breaks
+the index sequence or cancels a record not yet sent fails the RPC with
+INVALID_ARGUMENT after the results of the records admitted before it. A record
+without a result when the RPC fails may still have effects. The first record
+index is 1; every later record advances it by one. UINT64_MAX is invalid. Each
+record receives at most one ExecuteResponse with its ordinal and typed result,
+in completion order, so consumers match results by index. One stream can
+therefore carry the records of independent callers without a slow or failed
+record holding back the others. A client that shares a stream validates each
+record before sending it, since an invalid request ends the stream for every
+caller on it.
+
+`timeout_micros` optionally bounds one Read or Mutate record from the moment
+the server reads it; time spent in transport buffers is not counted, so clients
+still enforce their own deadline. A record still queued when it expires fails
+with DEADLINE_EXCEEDED, NOT_STARTED for a mutation; an executing record reports
+the evidence its cancellation leaves. Zero sets no record deadline. Native
+requires zero and uses the RPC deadline. `RecordTimeout` and `TimeoutMicros`
+convert between the field and Go durations without shortening or disabling a
+caller's budget.
+
+A request that sets only `store_name` and `cancel_index` cancels an earlier
+record of the same stream. It does not advance the index or receive a response.
+The canceled record still receives its own result: a CANCELLED failure,
+NOT_STARTED for a mutation, while it is still queued; the evidence its
+cancellation leaves while it executes; and its ordinary result once it has
+completed. Cancel requests let a stream shared by several callers release the
+work of one caller who stops waiting. Native streams use RPC cancellation
+instead.
+
+Each stream has room for `RecordWindow` (32) records without results, whatever
+the Store queue holds. A client that never has more than 32 records without
+results is never held back by the server's window, so its cancel requests take
+effect as soon as they arrive; a further record waits until a result frees room.
+
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
 validators check each envelope and nested fields. Requests and responses reject unknown
 fields throughout the message tree. Responses require declared result/event

@@ -12,8 +12,19 @@ option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 service StoreService {
   // Execute accepts requests and emits indexed results incrementally.
   // A stream selects one Store and operation kind. Each Read or Mutate request
-  // carries one record with a consecutive one-based index. It is validated
-  // before execution; earlier records may have effects before a later one fails.
+  // carries one record with a consecutive one-based index and receives at most
+  // one result, in completion order; consumers match results by index. A
+  // record the server cannot admit, such as one its adapter rejects, receives
+  // its own failed result, NOT_STARTED for a mutation, and the stream
+  // continues. A request that fails validation, changes the Store or kind,
+  // breaks the index sequence or cancels a record not yet sent fails the RPC
+  // with INVALID_ARGUMENT after the results of the records admitted before it.
+  // A record without a result when the RPC fails may still have effects. A
+  // cancel request cancels one earlier record without ending the stream.
+  // Each stream has room for 32 records without results, whatever the Store
+  // queue holds. A client that never has more than 32 records without results
+  // is never held back by the server's window, so its cancel requests take
+  // effect once they arrive; a further record waits until a result frees room.
   // Mutations to the same resource preserve input order across requests, including
   // after item failures. Different resources may execute concurrently. A stream
   // is not a transaction; ordering across streams follows database semantics.
@@ -23,23 +34,46 @@ service StoreService {
   rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
 }
 
-// ExecuteRequest binds one operation to its Store and index.
+// ExecuteRequest carries one operation with its Store and index, or cancels an
+// earlier record of the stream.
 message ExecuteRequest {
   // Store that owns all resources; must remain identical throughout the stream.
   string store_name = 1;
 
   // Consecutive one-based record ordinal. Each Read or Mutate request advances
-  // it by one. Native always uses 1. UINT64_MAX is invalid.
+  // it by one. Native always uses 1. UINT64_MAX is invalid. Zero in a cancel
+  // request.
   uint64 index = 2;
 
-  // Required operation; its kind must remain identical throughout the stream.
+  // Operation, required except in a cancel request; its kind must remain
+  // identical throughout the stream.
   Command command = 3;
+
+  // Optional Read or Mutate deadline in microseconds, measured from when the
+  // server reads the request. Time spent in transport buffers before then is
+  // not counted, so clients still enforce their own deadline. A record still
+  // queued when it expires fails with DEADLINE_EXCEEDED, NOT_STARTED for a
+  // mutation; an executing record reports the evidence its cancellation
+  // leaves. Zero sets no record deadline. Native requires zero and uses the
+  // RPC deadline.
+  uint64 timeout_micros = 4;
+
+  // Cancels the earlier record of this stream with this index instead of
+  // carrying one. A cancel request sets only store_name and cancel_index, does
+  // not advance the index and receives no response; the canceled record still
+  // receives its own result. A queued record fails with CANCELLED, NOT_STARTED
+  // for a mutation; an executing record reports the evidence its cancellation
+  // leaves, and a completed record is unaffected. A cancel request takes effect
+  // once the server reads it, which a record beyond the stream's window can
+  // delay. UINT64_MAX is invalid. Native streams use RPC cancellation instead.
+  uint64 cancel_index = 5;
 }
 
 // ExecuteResponse carries one result or streaming event.
 message ExecuteResponse {
-  // One-based input record ordinal; record results arrive in input order.
-  // Every input record has exactly one result. Native events all use 1.
+  // One-based input record ordinal; record results arrive in completion order.
+  // An index receives at most one result, and every record receives one
+  // unless the RPC fails first. Native events all use 1.
   uint64 index = 1;
 
   // Required typed event; it must match the stream's operation kind.

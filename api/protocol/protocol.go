@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -19,6 +20,11 @@ import (
 // MaxTransportMessageBytes is the largest message length representable on this Go platform.
 // Backend protocol limits and actual process capacity govern business payloads.
 const MaxTransportMessageBytes = int(^uint(0) >> 1)
+
+// RecordWindow is the number of records without results each stream has room
+// for. A client that never exceeds it is never held back by the server's
+// window, so its cancel requests take effect once they arrive.
+const RecordWindow = 32
 
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9])*$`)
 var mediaPattern = regexp.MustCompile(`^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$`)
@@ -197,9 +203,13 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 	return end
 }
 
-// ValidateExecuteRequest validates one operation without retaining stream
-// state. Callers enforce a fixed Store/kind and consecutive indexes across requests.
+// ValidateExecuteRequest validates one record or cancel request without
+// retaining stream state. Callers enforce a fixed Store/kind, consecutive
+// indexes and cancel requests that name earlier records.
 func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
+	if req != nil && req.CancelIndex != 0 {
+		return validateCancelRequest(req)
+	}
 	if req == nil || !ValidStoreName(req.StoreName) || req.Index == 0 {
 		return fmt.Errorf("invalid Execute request envelope")
 	}
@@ -215,16 +225,50 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 			return fmt.Errorf("record index overflows the next ordinal")
 		}
 	default:
-		if req.Index != 1 {
-			return fmt.Errorf("Native requires index 1")
+		if req.Index != 1 || req.TimeoutMicros != 0 {
+			return fmt.Errorf("Native requires index 1 and no record timeout")
 		}
 	}
 	return nil
 }
 
+func validateCancelRequest(req *pb.ExecuteRequest) error {
+	if !ValidStoreName(req.StoreName) || req.CancelIndex == math.MaxUint64 || req.Index != 0 || req.Command != nil || req.TimeoutMicros != 0 {
+		return fmt.Errorf("a cancel request carries only its Store and cancel_index")
+	}
+	if hasUnknown(req.ProtoReflect()) {
+		return fmt.Errorf("invalid Execute request fields")
+	}
+	return nil
+}
+
+// RecordTimeout converts a request's timeout_micros, saturating at the
+// longest representable duration. Zero means no record deadline.
+func RecordTimeout(micros uint64) time.Duration {
+	if micros > uint64(math.MaxInt64/int64(time.Microsecond)) {
+		return math.MaxInt64
+	}
+	return time.Duration(micros) * time.Microsecond
+}
+
+// TimeoutMicros rounds a remaining caller budget up to whole microseconds so a
+// record never receives less time than its caller allows. An exhausted budget
+// maps to one microsecond, never to the zero that disables the deadline.
+func TimeoutMicros(remaining time.Duration) uint64 {
+	if remaining <= time.Microsecond {
+		return 1
+	}
+	micros := uint64(remaining / time.Microsecond)
+	if remaining%time.Microsecond != 0 {
+		micros++
+	}
+	return micros
+}
+
 // ValidateExecuteResponse validates one indexed event and rejects unknown fields
-// recursively. Stream consumers enforce the expected event kind, result index sequence,
-// and terminal RPC evidence. Missing or unrecognized event variants remain invalid.
+// recursively. Stream consumers enforce the expected event kind, at most one
+// result per submitted index, and terminal RPC evidence. Missing or
+// unrecognized event variants remain invalid.
 func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
 	if response == nil || response.Index == 0 || response.Index == math.MaxUint64 || hasUnknown(response.ProtoReflect()) {
 		return fmt.Errorf("invalid Execute response envelope")
@@ -320,22 +364,29 @@ func hasUnknown(message protoreflect.Message) bool {
 	if len(message.GetUnknown()) != 0 {
 		return true
 	}
-	unknown := false
-	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
-		if field.IsList() && field.Message() != nil {
-			list := value.List()
-			for i := 0; i < list.Len(); i++ {
-				if hasUnknown(list.Get(i).Message()) {
-					unknown = true
-					return false
-				}
-			}
-		} else if field.Message() != nil {
-			unknown = hasUnknown(value.Message())
+	// Walk populated message fields by descriptor; a Range callback would
+	// allocate on every validated message.
+	fields := message.Descriptor().Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		if field.Message() == nil || !message.Has(field) {
+			continue
 		}
-		return !unknown
-	})
-	return unknown
+		value := message.Get(field)
+		if !field.IsList() {
+			if hasUnknown(value.Message()) {
+				return true
+			}
+			continue
+		}
+		list := value.List()
+		for j := range list.Len() {
+			if hasUnknown(list.Get(j).Message()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ValidateEvent checks known event semantics and fields.
