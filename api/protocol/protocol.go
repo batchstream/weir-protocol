@@ -320,22 +320,29 @@ func hasUnknown(message protoreflect.Message) bool {
 	if len(message.GetUnknown()) != 0 {
 		return true
 	}
-	unknown := false
-	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
-		if field.IsList() && field.Message() != nil {
-			list := value.List()
-			for i := 0; i < list.Len(); i++ {
-				if hasUnknown(list.Get(i).Message()) {
-					unknown = true
-					return false
-				}
-			}
-		} else if field.Message() != nil {
-			unknown = hasUnknown(value.Message())
+	// Walk populated message fields by descriptor; a Range callback would
+	// allocate on every validated message.
+	fields := message.Descriptor().Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		if field.Message() == nil || !message.Has(field) {
+			continue
 		}
-		return !unknown
-	})
-	return unknown
+		value := message.Get(field)
+		if !field.IsList() {
+			if hasUnknown(value.Message()) {
+				return true
+			}
+			continue
+		}
+		list := value.List()
+		for j := range list.Len() {
+			if hasUnknown(list.Get(j).Message()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ValidateEvent checks known event semantics and fields.
