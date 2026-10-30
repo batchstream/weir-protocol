@@ -4,7 +4,7 @@ Shared public schemas, generated Go types and validation for Weir servers and
 clients. Requires Go 1.27.1.
 
 ```sh
-go get github.com/batchstream/weir-protocol@v0.15.0
+go get github.com/batchstream/weir-protocol@v0.16.0
 ```
 
 The dependency direction is one-way: Weir and the Go SDK depend on this module.
@@ -35,10 +35,22 @@ adapter-owned formats; new adapters need no protobuf fields or schema changes.
 Empty request data is permitted. Unknown valid content types are left to the
 selected adapter.
 
-Each request is validated before execution. Earlier requests may have effects
-when a later request fails validation. The first record index is 1; every later
-request advances it by one. UINT64_MAX is invalid. Every record produces one
-ExecuteResponse with its ordinal and typed result, in input order.
+Each request is validated before execution. A record the server cannot admit,
+such as one its adapter rejects or one sent while the Store drains, receives its
+own failed result and the stream continues. An invalid envelope or index
+sequence ends the stream; earlier records may have effects when it does. The
+first record index is 1; every later request advances it by one. UINT64_MAX is
+invalid. Every record produces one ExecuteResponse with its ordinal and typed
+result, in completion order, so consumers match results by index. One stream can
+therefore carry the records of independent callers without a slow or failed
+record holding back the others.
+
+`timeout_micros` optionally bounds one record from the moment the server
+receives it. A record still queued when it expires is NOT_STARTED with
+DEADLINE_EXCEEDED; an executing record reports the evidence its cancellation
+leaves. Zero sets no record deadline. Native requires zero and uses the RPC
+deadline. `RecordTimeout` and `TimeoutMicros` convert between the field and Go
+durations without shortening or disabling a caller's budget.
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
 validators check each envelope and nested fields. Requests and responses reject unknown
 fields throughout the message tree. Responses require declared result/event

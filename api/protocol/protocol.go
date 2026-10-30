@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -215,16 +216,37 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 			return fmt.Errorf("record index overflows the next ordinal")
 		}
 	default:
-		if req.Index != 1 {
-			return fmt.Errorf("Native requires index 1")
+		if req.Index != 1 || req.TimeoutMicros != 0 {
+			return fmt.Errorf("Native requires index 1 and no record timeout")
 		}
 	}
 	return nil
 }
 
+// RecordTimeout converts a request's timeout_micros, saturating at the
+// longest representable duration. Zero means no record deadline.
+func RecordTimeout(micros uint64) time.Duration {
+	if micros > uint64(math.MaxInt64/int64(time.Microsecond)) {
+		return math.MaxInt64
+	}
+	return time.Duration(micros) * time.Microsecond
+}
+
+// TimeoutMicros rounds a remaining caller budget up to whole microseconds so a
+// record never receives less time than its caller allows. An exhausted budget
+// maps to one microsecond, never to the zero that disables the deadline.
+func TimeoutMicros(remaining time.Duration) uint64 {
+	if remaining <= time.Microsecond {
+		return 1
+	}
+	micros := (remaining + time.Microsecond - 1) / time.Microsecond
+	return uint64(micros)
+}
+
 // ValidateExecuteResponse validates one indexed event and rejects unknown fields
-// recursively. Stream consumers enforce the expected event kind, result index sequence,
-// and terminal RPC evidence. Missing or unrecognized event variants remain invalid.
+// recursively. Stream consumers enforce the expected event kind, exactly one
+// result per submitted index, and terminal RPC evidence. Missing or
+// unrecognized event variants remain invalid.
 func ValidateExecuteResponse(response *pb.ExecuteResponse) error {
 	if response == nil || response.Index == 0 || response.Index == math.MaxUint64 || hasUnknown(response.ProtoReflect()) {
 		return fmt.Errorf("invalid Execute response envelope")

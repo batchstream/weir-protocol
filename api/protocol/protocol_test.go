@@ -1,8 +1,10 @@
 package protocol
 
 import (
+	"math"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	pb "github.com/batchstream/weir-protocol/api/weir/v1"
@@ -126,6 +128,10 @@ func TestNativeUsesOneIndexedFrame(t *testing.T) {
 	if err := ValidateExecuteRequest(request); err == nil {
 		t.Fatal("Native record ordinal accepted")
 	}
+	request.Index, request.TimeoutMicros = 1, 1
+	if err := ValidateExecuteRequest(request); err == nil {
+		t.Fatal("Native record timeout accepted")
+	}
 	head := &pb.NativeHead{}
 	value := &pb.Event_Head{Head: head}
 	event := &pb.Event{Value: value}
@@ -210,5 +216,32 @@ func TestSchemaHasNoMapFields(t *testing.T) {
 			}
 			pending = append(pending, message.Messages())
 		}
+	}
+}
+
+func TestRecordTimeoutNeverShortensOrDisablesTheCallerBudget(t *testing.T) {
+	read := &pb.ReadRequest{Resource: "records/a"}
+	request := readExecution("records", 1, read)
+	request.TimeoutMicros = math.MaxUint64
+	if err := ValidateExecuteRequest(request); err != nil {
+		t.Fatal("record timeout rejected", err)
+	}
+	cases := []struct {
+		remaining time.Duration
+		micros    uint64
+	}{
+		{remaining: -time.Second, micros: 1},
+		{remaining: 0, micros: 1},
+		{remaining: time.Nanosecond, micros: 1},
+		{remaining: time.Microsecond + time.Nanosecond, micros: 2},
+		{remaining: 3 * time.Second, micros: 3_000_000},
+	}
+	for _, c := range cases {
+		if got := TimeoutMicros(c.remaining); got != c.micros {
+			t.Fatalf("TimeoutMicros(%v) = %d, want %d", c.remaining, got, c.micros)
+		}
+	}
+	if RecordTimeout(0) != 0 || RecordTimeout(3_000_000) != 3*time.Second || RecordTimeout(math.MaxUint64) != math.MaxInt64 {
+		t.Fatal("record timeout conversion changed")
 	}
 }

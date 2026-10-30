@@ -12,8 +12,10 @@ option go_package = "github.com/batchstream/weir-protocol/api/weir/v1;weirv1";
 service StoreService {
   // Execute accepts requests and emits indexed results incrementally.
   // A stream selects one Store and operation kind. Each Read or Mutate request
-  // carries one record with a consecutive one-based index. It is validated
-  // before execution; earlier records may have effects before a later one fails.
+  // carries one record with a consecutive one-based index and receives exactly
+  // one result, in completion order. A record the server cannot admit receives
+  // its own failed result; only an invalid request envelope or sequence ends
+  // the stream, and earlier records may have effects when it does.
   // Mutations to the same resource preserve input order across requests, including
   // after item failures. Different resources may execute concurrently. A stream
   // is not a transaction; ordering across streams follows database semantics.
@@ -34,11 +36,18 @@ message ExecuteRequest {
 
   // Required operation; its kind must remain identical throughout the stream.
   Command command = 3;
+
+  // Optional record deadline in microseconds after the server receives the
+  // request. A record still queued when it expires is NOT_STARTED with
+  // DEADLINE_EXCEEDED; an executing record reports the evidence its
+  // cancellation leaves. Zero sets no record deadline. Native requires zero
+  // and uses the RPC deadline.
+  uint64 timeout_micros = 4;
 }
 
 // ExecuteResponse carries one result or streaming event.
 message ExecuteResponse {
-  // One-based input record ordinal; record results arrive in input order.
+  // One-based input record ordinal; record results arrive in completion order.
   // Every input record has exactly one result. Native events all use 1.
   uint64 index = 1;
 

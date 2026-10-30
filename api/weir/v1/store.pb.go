@@ -296,7 +296,13 @@ type ExecuteRequest struct {
 	// it by one. Native always uses 1. UINT64_MAX is invalid.
 	Index uint64 `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
 	// Required operation; its kind must remain identical throughout the stream.
-	Command       *Command `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
+	Command *Command `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
+	// Optional record deadline in microseconds after the server receives the
+	// request. A record still queued when it expires is NOT_STARTED with
+	// DEADLINE_EXCEEDED; an executing record reports the evidence its
+	// cancellation leaves. Zero sets no record deadline. Native requires zero
+	// and uses the RPC deadline.
+	TimeoutMicros uint64 `protobuf:"varint,4,opt,name=timeout_micros,json=timeoutMicros,proto3" json:"timeout_micros,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -352,10 +358,17 @@ func (x *ExecuteRequest) GetCommand() *Command {
 	return nil
 }
 
+func (x *ExecuteRequest) GetTimeoutMicros() uint64 {
+	if x != nil {
+		return x.TimeoutMicros
+	}
+	return 0
+}
+
 // ExecuteResponse carries one result or streaming event.
 type ExecuteResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// One-based input record ordinal; record results arrive in input order.
+	// One-based input record ordinal; record results arrive in completion order.
 	// Every input record has exactly one result. Native events all use 1.
 	Index uint64 `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
 	// Required typed event; it must match the stream's operation kind.
@@ -1533,12 +1546,13 @@ var File_api_weir_v1_store_proto protoreflect.FileDescriptor
 
 const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\n" +
-	"\x17api/weir/v1/store.proto\x12\aweir.v1\"q\n" +
+	"\x17api/weir/v1/store.proto\x12\aweir.v1\"\x98\x01\n" +
 	"\x0eExecuteRequest\x12\x1d\n" +
 	"\n" +
 	"store_name\x18\x01 \x01(\tR\tstoreName\x12\x14\n" +
 	"\x05index\x18\x02 \x01(\x04R\x05index\x12*\n" +
-	"\acommand\x18\x03 \x01(\v2\x10.weir.v1.CommandR\acommand\"M\n" +
+	"\acommand\x18\x03 \x01(\v2\x10.weir.v1.CommandR\acommand\x12%\n" +
+	"\x0etimeout_micros\x18\x04 \x01(\x04R\rtimeoutMicros\"M\n" +
 	"\x0fExecuteResponse\x12\x14\n" +
 	"\x05index\x18\x01 \x01(\x04R\x05index\x12$\n" +
 	"\x05event\x18\x02 \x01(\v2\x0e.weir.v1.EventR\x05event\"\xa6\x01\n" +

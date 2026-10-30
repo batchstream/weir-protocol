@@ -29,8 +29,10 @@ const (
 type StoreServiceClient interface {
 	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
-	// carries one record with a consecutive one-based index. It is validated
-	// before execution; earlier records may have effects before a later one fails.
+	// carries one record with a consecutive one-based index and receives exactly
+	// one result, in completion order. A record the server cannot admit receives
+	// its own failed result; only an invalid request envelope or sequence ends
+	// the stream, and earlier records may have effects when it does.
 	// Mutations to the same resource preserve input order across requests, including
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.
@@ -66,8 +68,10 @@ func (c *storeServiceClient) Execute(ctx context.Context, opts ...grpc.CallOptio
 type StoreServiceServer interface {
 	// Execute accepts requests and emits indexed results incrementally.
 	// A stream selects one Store and operation kind. Each Read or Mutate request
-	// carries one record with a consecutive one-based index. It is validated
-	// before execution; earlier records may have effects before a later one fails.
+	// carries one record with a consecutive one-based index and receives exactly
+	// one result, in completion order. A record the server cannot admit receives
+	// its own failed result; only an invalid request envelope or sequence ends
+	// the stream, and earlier records may have effects when it does.
 	// Mutations to the same resource preserve input order across requests, including
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.
