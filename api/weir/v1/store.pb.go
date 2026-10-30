@@ -314,8 +314,8 @@ type ExecuteRequest struct {
 	// receives its own result. A queued record fails with CANCELLED, NOT_STARTED
 	// for a mutation; an executing record reports the evidence its cancellation
 	// leaves, and a completed record is unaffected. A cancel request takes effect
-	// once the server reads it, at the latest when the stream's window has room.
-	// UINT64_MAX is invalid. Native streams use RPC cancellation instead.
+	// once the server reads it, which a record beyond the stream's window can
+	// delay. UINT64_MAX is invalid. Native streams use RPC cancellation instead.
 	CancelIndex   uint64 `protobuf:"varint,5,opt,name=cancel_index,json=cancelIndex,proto3" json:"cancel_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

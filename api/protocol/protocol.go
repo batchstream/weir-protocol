@@ -21,9 +21,9 @@ import (
 // Backend protocol limits and actual process capacity govern business payloads.
 const MaxTransportMessageBytes = int(^uint(0) >> 1)
 
-// RecordWindow is the number of records without results a server reads ahead
-// of its results on one stream. A client that never exceeds it never waits to
-// send a record or cancel request.
+// RecordWindow is the number of records without results each stream has room
+// for. A client that never exceeds it is never held back by the server's
+// window, so its cancel requests take effect once they arrive.
 const RecordWindow = 32
 
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9])*$`)

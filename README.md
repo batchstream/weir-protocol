@@ -68,11 +68,10 @@ completed. Cancel requests let a stream shared by several callers release the
 work of one caller who stops waiting. Native streams use RPC cancellation
 instead.
 
-A server reads ahead of its results for up to `RecordWindow` (32) records
-without results per stream, whatever its Store queue holds. A client that never
-has more than 32 records without results never waits to send a record or cancel
-request, so its cancel requests take effect as soon as they arrive; a further
-record waits until a result frees room.
+Each stream has room for `RecordWindow` (32) records without results, whatever
+the Store queue holds. A client that never has more than 32 records without
+results is never held back by the server's window, so its cancel requests take
+effect as soon as they arrive; a further record waits until a result frees room.
 
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
 validators check each envelope and nested fields. Requests and responses reject unknown
