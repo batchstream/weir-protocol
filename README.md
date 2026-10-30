@@ -54,16 +54,25 @@ caller on it.
 the server reads it; time spent in transport buffers is not counted, so clients
 still enforce their own deadline. A record still queued when it expires fails
 with DEADLINE_EXCEEDED, NOT_STARTED for a mutation; an executing record reports
-the evidence its cancellation leaves. Zero sets no record deadline. Native requires zero and uses the RPC
-deadline. `RecordTimeout` and `TimeoutMicros` convert between the field and Go
-durations without shortening or disabling a caller's budget.
+the evidence its cancellation leaves. Zero sets no record deadline. Native
+requires zero and uses the RPC deadline. `RecordTimeout` and `TimeoutMicros`
+convert between the field and Go durations without shortening or disabling a
+caller's budget.
 
 A request that sets only `store_name` and `cancel_index` cancels an earlier
-record of the same stream. It does not advance the index or receive a response;
-the canceled record still receives its own result, a CANCELLED failure when it
-was still queued. Cancel requests let a stream shared by several callers
-release the work of one caller who stops waiting. Native streams use RPC
-cancellation instead.
+record of the same stream. It does not advance the index or receive a response.
+The canceled record still receives its own result: a CANCELLED failure,
+NOT_STARTED for a mutation, while it is still queued; the evidence its
+cancellation leaves while it executes; and its ordinary result once it has
+completed. Cancel requests let a stream shared by several callers release the
+work of one caller who stops waiting. Native streams use RPC cancellation
+instead.
+
+A server reads ahead of its results for up to `RecordWindow` (32) records
+without results per stream, whatever its Store queue holds. A client that never
+has more than 32 records without results never waits to send a record or cancel
+request, so its cancel requests take effect as soon as they arrive; a further
+record waits until a result frees room.
 
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
 validators check each envelope and nested fields. Requests and responses reject unknown

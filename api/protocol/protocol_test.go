@@ -120,18 +120,33 @@ func TestCancelRequestCarriesOnlyItsStoreAndIndex(t *testing.T) {
 	if err := ValidateExecuteRequest(request); err != nil {
 		t.Fatal("cancel request rejected", err)
 	}
-	document := &pb.Document{ContentType: "application/json", Data: []byte(`{}`)}
-	action := &pb.MutateRequest_Put{Put: document}
-	mutation := &pb.MutateRequest{Resource: "db/c/s:a", Action: action}
-	operation := &pb.Command_Mutate{Mutate: mutation}
-	command := &pb.Command{Operation: operation}
-	for _, mutate := range []func(*pb.ExecuteRequest){
+	invalid := []func(*pb.ExecuteRequest){
 		func(r *pb.ExecuteRequest) { r.StoreName = "" },
-		func(r *pb.ExecuteRequest) { r.Index = 3 },
-		func(r *pb.ExecuteRequest) { r.Command = command },
-		func(r *pb.ExecuteRequest) { r.TimeoutMicros = 1 },
+		func(r *pb.ExecuteRequest) { r.CancelIndex = math.MaxUint64 },
 		func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
-	} {
+	}
+	// Every other field, including one added later, must stay unset.
+	fields := request.ProtoReflect().Descriptor().Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		if field.Name() == "store_name" || field.Name() == "cancel_index" {
+			continue
+		}
+		invalid = append(invalid, func(r *pb.ExecuteRequest) {
+			message := r.ProtoReflect()
+			switch field.Kind() {
+			case protoreflect.MessageKind:
+				message.Set(field, protoreflect.ValueOfMessage(message.NewField(field).Message()))
+			case protoreflect.StringKind:
+				message.Set(field, protoreflect.ValueOfString("x"))
+			case protoreflect.Uint64Kind:
+				message.Set(field, protoreflect.ValueOfUint64(1))
+			default:
+				t.Fatal("cancel test cannot populate field", field.FullName())
+			}
+		})
+	}
+	for _, mutate := range invalid {
 		copied := proto.Clone(request).(*pb.ExecuteRequest)
 		mutate(copied)
 		if err := ValidateExecuteRequest(copied); err == nil {

@@ -38,6 +38,10 @@ type StoreServiceClient interface {
 	// with INVALID_ARGUMENT after the results of the records admitted before it.
 	// A record without a result when the RPC fails may still have effects. A
 	// cancel request cancels one earlier record without ending the stream.
+	// A server reads ahead of its results for up to 32 records without results
+	// per stream, whatever its Store queue holds. A client that never has more
+	// than 32 records without results never waits to send a record or cancel
+	// request; a further record waits until a result frees room.
 	// Mutations to the same resource preserve input order across requests, including
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.
@@ -82,6 +86,10 @@ type StoreServiceServer interface {
 	// with INVALID_ARGUMENT after the results of the records admitted before it.
 	// A record without a result when the RPC fails may still have effects. A
 	// cancel request cancels one earlier record without ending the stream.
+	// A server reads ahead of its results for up to 32 records without results
+	// per stream, whatever its Store queue holds. A client that never has more
+	// than 32 records without results never waits to send a record or cancel
+	// request; a further record waits until a result frees room.
 	// Mutations to the same resource preserve input order across requests, including
 	// after item failures. Different resources may execute concurrently. A stream
 	// is not a transaction; ordering across streams follows database semantics.

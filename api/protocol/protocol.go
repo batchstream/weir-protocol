@@ -21,6 +21,11 @@ import (
 // Backend protocol limits and actual process capacity govern business payloads.
 const MaxTransportMessageBytes = int(^uint(0) >> 1)
 
+// RecordWindow is the number of records without results a server reads ahead
+// of its results on one stream. A client that never exceeds it never waits to
+// send a record or cancel request.
+const RecordWindow = 32
+
 var storePattern = regexp.MustCompile(`^[a-z](?:[a-z0-9]|-[a-z0-9])*$`)
 var mediaPattern = regexp.MustCompile(`^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$`)
 
@@ -228,7 +233,7 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 }
 
 func validateCancelRequest(req *pb.ExecuteRequest) error {
-	if !ValidStoreName(req.StoreName) || req.Index != 0 || req.Command != nil || req.TimeoutMicros != 0 {
+	if !ValidStoreName(req.StoreName) || req.CancelIndex == math.MaxUint64 || req.Index != 0 || req.Command != nil || req.TimeoutMicros != 0 {
 		return fmt.Errorf("a cancel request carries only its Store and cancel_index")
 	}
 	if hasUnknown(req.ProtoReflect()) {

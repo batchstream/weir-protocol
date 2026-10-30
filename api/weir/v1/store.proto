@@ -21,6 +21,10 @@ service StoreService {
   // with INVALID_ARGUMENT after the results of the records admitted before it.
   // A record without a result when the RPC fails may still have effects. A
   // cancel request cancels one earlier record without ending the stream.
+  // A server reads ahead of its results for up to 32 records without results
+  // per stream, whatever its Store queue holds. A client that never has more
+  // than 32 records without results never waits to send a record or cancel
+  // request; a further record waits until a result frees room.
   // Mutations to the same resource preserve input order across requests, including
   // after item failures. Different resources may execute concurrently. A stream
   // is not a transaction; ordering across streams follows database semantics.
@@ -30,16 +34,19 @@ service StoreService {
   rpc Execute(stream ExecuteRequest) returns (stream ExecuteResponse);
 }
 
-// ExecuteRequest binds one operation to its Store and index.
+// ExecuteRequest carries one operation with its Store and index, or cancels an
+// earlier record of the stream.
 message ExecuteRequest {
   // Store that owns all resources; must remain identical throughout the stream.
   string store_name = 1;
 
   // Consecutive one-based record ordinal. Each Read or Mutate request advances
-  // it by one. Native always uses 1. UINT64_MAX is invalid.
+  // it by one. Native always uses 1. UINT64_MAX is invalid. Zero in a cancel
+  // request.
   uint64 index = 2;
 
-  // Required operation; its kind must remain identical throughout the stream.
+  // Operation, required except in a cancel request; its kind must remain
+  // identical throughout the stream.
   Command command = 3;
 
   // Optional Read or Mutate deadline in microseconds, measured from when the
@@ -56,9 +63,9 @@ message ExecuteRequest {
   // not advance the index and receives no response; the canceled record still
   // receives its own result. A queued record fails with CANCELLED, NOT_STARTED
   // for a mutation; an executing record reports the evidence its cancellation
-  // leaves, and a completed record is unaffected. The server reads requests in
-  // order, so a cancel request takes effect once it is read. Native streams
-  // use RPC cancellation instead.
+  // leaves, and a completed record is unaffected. A cancel request takes effect
+  // once the server reads it, at the latest when the stream's window has room.
+  // UINT64_MAX is invalid. Native streams use RPC cancellation instead.
   uint64 cancel_index = 5;
 }
 

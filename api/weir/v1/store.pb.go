@@ -287,15 +287,18 @@ func (NativeCompletion) EnumDescriptor() ([]byte, []int) {
 	return file_api_weir_v1_store_proto_rawDescGZIP(), []int{3}
 }
 
-// ExecuteRequest binds one operation to its Store and index.
+// ExecuteRequest carries one operation with its Store and index, or cancels an
+// earlier record of the stream.
 type ExecuteRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Store that owns all resources; must remain identical throughout the stream.
 	StoreName string `protobuf:"bytes,1,opt,name=store_name,json=storeName,proto3" json:"store_name,omitempty"`
 	// Consecutive one-based record ordinal. Each Read or Mutate request advances
-	// it by one. Native always uses 1. UINT64_MAX is invalid.
+	// it by one. Native always uses 1. UINT64_MAX is invalid. Zero in a cancel
+	// request.
 	Index uint64 `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
-	// Required operation; its kind must remain identical throughout the stream.
+	// Operation, required except in a cancel request; its kind must remain
+	// identical throughout the stream.
 	Command *Command `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
 	// Optional Read or Mutate deadline in microseconds, measured from when the
 	// server reads the request. Time spent in transport buffers before then is
@@ -310,9 +313,9 @@ type ExecuteRequest struct {
 	// not advance the index and receives no response; the canceled record still
 	// receives its own result. A queued record fails with CANCELLED, NOT_STARTED
 	// for a mutation; an executing record reports the evidence its cancellation
-	// leaves, and a completed record is unaffected. The server reads requests in
-	// order, so a cancel request takes effect once it is read. Native streams
-	// use RPC cancellation instead.
+	// leaves, and a completed record is unaffected. A cancel request takes effect
+	// once the server reads it, at the latest when the stream's window has room.
+	// UINT64_MAX is invalid. Native streams use RPC cancellation instead.
 	CancelIndex   uint64 `protobuf:"varint,5,opt,name=cancel_index,json=cancelIndex,proto3" json:"cancel_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
