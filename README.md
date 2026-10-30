@@ -1,7 +1,7 @@
 # Weir public protocol
 
 Shared public schemas, generated Go types and validation for Weir servers and
-clients. Requires Go 1.27.1.
+clients. Requires Go 1.27.3.
 
 ```sh
 go get github.com/batchstream/weir-protocol@v0.17.0
