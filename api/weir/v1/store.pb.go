@@ -297,12 +297,23 @@ type ExecuteRequest struct {
 	Index uint64 `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
 	// Required operation; its kind must remain identical throughout the stream.
 	Command *Command `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
-	// Optional record deadline in microseconds after the server receives the
-	// request. A record still queued when it expires is NOT_STARTED with
-	// DEADLINE_EXCEEDED; an executing record reports the evidence its
-	// cancellation leaves. Zero sets no record deadline. Native requires zero
-	// and uses the RPC deadline.
+	// Optional Read or Mutate deadline in microseconds, measured from when the
+	// server reads the request. Time spent in transport buffers before then is
+	// not counted, so clients still enforce their own deadline. A record still
+	// queued when it expires fails with DEADLINE_EXCEEDED, NOT_STARTED for a
+	// mutation; an executing record reports the evidence its cancellation
+	// leaves. Zero sets no record deadline. Native requires zero and uses the
+	// RPC deadline.
 	TimeoutMicros uint64 `protobuf:"varint,4,opt,name=timeout_micros,json=timeoutMicros,proto3" json:"timeout_micros,omitempty"`
+	// Cancels the earlier record of this stream with this index instead of
+	// carrying one. A cancel request sets only store_name and cancel_index, does
+	// not advance the index and receives no response; the canceled record still
+	// receives its own result. A queued record fails with CANCELLED, NOT_STARTED
+	// for a mutation; an executing record reports the evidence its cancellation
+	// leaves, and a completed record is unaffected. The server reads requests in
+	// order, so a cancel request takes effect once it is read. Native streams
+	// use RPC cancellation instead.
+	CancelIndex   uint64 `protobuf:"varint,5,opt,name=cancel_index,json=cancelIndex,proto3" json:"cancel_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -365,11 +376,19 @@ func (x *ExecuteRequest) GetTimeoutMicros() uint64 {
 	return 0
 }
 
+func (x *ExecuteRequest) GetCancelIndex() uint64 {
+	if x != nil {
+		return x.CancelIndex
+	}
+	return 0
+}
+
 // ExecuteResponse carries one result or streaming event.
 type ExecuteResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// One-based input record ordinal; record results arrive in completion order.
-	// Every input record has exactly one result. Native events all use 1.
+	// An index receives at most one result, and every record receives one
+	// unless the RPC fails first. Native events all use 1.
 	Index uint64 `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
 	// Required typed event; it must match the stream's operation kind.
 	Event         *Event `protobuf:"bytes,2,opt,name=event,proto3" json:"event,omitempty"`
@@ -1546,13 +1565,14 @@ var File_api_weir_v1_store_proto protoreflect.FileDescriptor
 
 const file_api_weir_v1_store_proto_rawDesc = "" +
 	"\n" +
-	"\x17api/weir/v1/store.proto\x12\aweir.v1\"\x98\x01\n" +
+	"\x17api/weir/v1/store.proto\x12\aweir.v1\"\xbb\x01\n" +
 	"\x0eExecuteRequest\x12\x1d\n" +
 	"\n" +
 	"store_name\x18\x01 \x01(\tR\tstoreName\x12\x14\n" +
 	"\x05index\x18\x02 \x01(\x04R\x05index\x12*\n" +
 	"\acommand\x18\x03 \x01(\v2\x10.weir.v1.CommandR\acommand\x12%\n" +
-	"\x0etimeout_micros\x18\x04 \x01(\x04R\rtimeoutMicros\"M\n" +
+	"\x0etimeout_micros\x18\x04 \x01(\x04R\rtimeoutMicros\x12!\n" +
+	"\fcancel_index\x18\x05 \x01(\x04R\vcancelIndex\"M\n" +
 	"\x0fExecuteResponse\x12\x14\n" +
 	"\x05index\x18\x01 \x01(\x04R\x05index\x12$\n" +
 	"\x05event\x18\x02 \x01(\v2\x0e.weir.v1.EventR\x05event\"\xa6\x01\n" +

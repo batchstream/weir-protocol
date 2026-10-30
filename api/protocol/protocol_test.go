@@ -115,6 +115,31 @@ func TestExecuteTypedEnvelopeAndUnknownFields(t *testing.T) {
 	}
 }
 
+func TestCancelRequestCarriesOnlyItsStoreAndIndex(t *testing.T) {
+	request := &pb.ExecuteRequest{StoreName: "records", CancelIndex: 3}
+	if err := ValidateExecuteRequest(request); err != nil {
+		t.Fatal("cancel request rejected", err)
+	}
+	document := &pb.Document{ContentType: "application/json", Data: []byte(`{}`)}
+	action := &pb.MutateRequest_Put{Put: document}
+	mutation := &pb.MutateRequest{Resource: "db/c/s:a", Action: action}
+	operation := &pb.Command_Mutate{Mutate: mutation}
+	command := &pb.Command{Operation: operation}
+	for _, mutate := range []func(*pb.ExecuteRequest){
+		func(r *pb.ExecuteRequest) { r.StoreName = "" },
+		func(r *pb.ExecuteRequest) { r.Index = 3 },
+		func(r *pb.ExecuteRequest) { r.Command = command },
+		func(r *pb.ExecuteRequest) { r.TimeoutMicros = 1 },
+		func(r *pb.ExecuteRequest) { r.ProtoReflect().SetUnknown([]byte{0xf8, 0x07, 1}) },
+	} {
+		copied := proto.Clone(request).(*pb.ExecuteRequest)
+		mutate(copied)
+		if err := ValidateExecuteRequest(copied); err == nil {
+			t.Fatal("accepted invalid cancel request", copied)
+		}
+	}
+}
+
 func TestNativeUsesOneIndexedFrame(t *testing.T) {
 	body := &pb.Document{ContentType: "application/vnd.example.native", Data: []byte("command")}
 	native := &pb.NativeRequest{Resource: "records", Request: body}

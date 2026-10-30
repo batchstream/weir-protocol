@@ -198,9 +198,13 @@ func NativeFailure(started bool, failure *pb.Failure) *pb.NativeEnd {
 	return end
 }
 
-// ValidateExecuteRequest validates one operation without retaining stream
-// state. Callers enforce a fixed Store/kind and consecutive indexes across requests.
+// ValidateExecuteRequest validates one record or cancel request without
+// retaining stream state. Callers enforce a fixed Store/kind, consecutive
+// indexes and cancel requests that name earlier records.
 func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
+	if req != nil && req.CancelIndex != 0 {
+		return validateCancelRequest(req)
+	}
 	if req == nil || !ValidStoreName(req.StoreName) || req.Index == 0 {
 		return fmt.Errorf("invalid Execute request envelope")
 	}
@@ -219,6 +223,16 @@ func ValidateExecuteRequest(req *pb.ExecuteRequest) error {
 		if req.Index != 1 || req.TimeoutMicros != 0 {
 			return fmt.Errorf("Native requires index 1 and no record timeout")
 		}
+	}
+	return nil
+}
+
+func validateCancelRequest(req *pb.ExecuteRequest) error {
+	if !ValidStoreName(req.StoreName) || req.Index != 0 || req.Command != nil || req.TimeoutMicros != 0 {
+		return fmt.Errorf("a cancel request carries only its Store and cancel_index")
+	}
+	if hasUnknown(req.ProtoReflect()) {
+		return fmt.Errorf("invalid Execute request fields")
 	}
 	return nil
 }
@@ -247,7 +261,7 @@ func TimeoutMicros(remaining time.Duration) uint64 {
 }
 
 // ValidateExecuteResponse validates one indexed event and rejects unknown fields
-// recursively. Stream consumers enforce the expected event kind, exactly one
+// recursively. Stream consumers enforce the expected event kind, at most one
 // result per submitted index, and terminal RPC evidence. Missing or
 // unrecognized event variants remain invalid.
 func ValidateExecuteResponse(response *pb.ExecuteResponse) error {

@@ -37,20 +37,34 @@ selected adapter.
 
 Each request is validated before execution. A record the server cannot admit,
 such as one its adapter rejects or one sent while the Store drains, receives its
-own failed result and the stream continues. An invalid envelope or index
-sequence ends the stream; earlier records may have effects when it does. The
-first record index is 1; every later request advances it by one. UINT64_MAX is
-invalid. Every record produces one ExecuteResponse with its ordinal and typed
-result, in completion order, so consumers match results by index. One stream can
+own failed result, NOT_STARTED for a mutation, and the stream continues. A
+request that fails `ValidateExecuteRequest`, changes the Store or kind, breaks
+the index sequence or cancels a record not yet sent fails the RPC with
+INVALID_ARGUMENT after the results of the records admitted before it. A record
+without a result when the RPC fails may still have effects. The first record
+index is 1; every later record advances it by one. UINT64_MAX is invalid. Each
+record receives at most one ExecuteResponse with its ordinal and typed result,
+in completion order, so consumers match results by index. One stream can
 therefore carry the records of independent callers without a slow or failed
-record holding back the others.
+record holding back the others. A client that shares a stream validates each
+record before sending it, since an invalid request ends the stream for every
+caller on it.
 
-`timeout_micros` optionally bounds one record from the moment the server
-receives it. A record still queued when it expires is NOT_STARTED with
-DEADLINE_EXCEEDED; an executing record reports the evidence its cancellation
-leaves. Zero sets no record deadline. Native requires zero and uses the RPC
+`timeout_micros` optionally bounds one Read or Mutate record from the moment
+the server reads it; time spent in transport buffers is not counted, so clients
+still enforce their own deadline. A record still queued when it expires fails
+with DEADLINE_EXCEEDED, NOT_STARTED for a mutation; an executing record reports
+the evidence its cancellation leaves. Zero sets no record deadline. Native requires zero and uses the RPC
 deadline. `RecordTimeout` and `TimeoutMicros` convert between the field and Go
 durations without shortening or disabling a caller's budget.
+
+A request that sets only `store_name` and `cancel_index` cancels an earlier
+record of the same stream. It does not advance the index or receive a response;
+the canceled record still receives its own result, a CANCELLED failure when it
+was still queued. Cancel requests let a stream shared by several callers
+release the work of one caller who stops waiting. Native streams use RPC
+cancellation instead.
+
 Servers and clients enforce Store/kind consistency and index sequences. Stateless
 validators check each envelope and nested fields. Requests and responses reject unknown
 fields throughout the message tree. Responses require declared result/event

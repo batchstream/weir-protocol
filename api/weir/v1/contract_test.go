@@ -61,7 +61,7 @@ func TestPublicStoreContract(t *testing.T) {
 	if StoreService_Execute_FullMethodName != "/weir.v1.StoreService/Execute" {
 		t.Fatal("generated public method path changed")
 	}
-	executeRequest := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "index", kind: protoreflect.Uint64Kind}, {name: "command", kind: protoreflect.MessageKind, message: "weir.v1.Command"}, {name: "timeout_micros", kind: protoreflect.Uint64Kind}}
+	executeRequest := []fieldContract{{name: "store_name", kind: protoreflect.StringKind}, {name: "index", kind: protoreflect.Uint64Kind}, {name: "command", kind: protoreflect.MessageKind, message: "weir.v1.Command"}, {name: "timeout_micros", kind: protoreflect.Uint64Kind}, {name: "cancel_index", kind: protoreflect.Uint64Kind}}
 	assertFields(t, execute.Input(), executeRequest)
 	executeResponse := []fieldContract{{name: "index", kind: protoreflect.Uint64Kind}, {name: "event", kind: protoreflect.MessageKind, message: "weir.v1.Event"}}
 	assertFields(t, execute.Output(), executeResponse)
