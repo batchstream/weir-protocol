@@ -235,13 +235,26 @@ func TestRecordTimeoutNeverShortensOrDisablesTheCallerBudget(t *testing.T) {
 		{remaining: time.Nanosecond, micros: 1},
 		{remaining: time.Microsecond + time.Nanosecond, micros: 2},
 		{remaining: 3 * time.Second, micros: 3_000_000},
+		{remaining: math.MaxInt64, micros: math.MaxInt64/1000 + 1},
 	}
 	for _, c := range cases {
 		if got := TimeoutMicros(c.remaining); got != c.micros {
 			t.Fatalf("TimeoutMicros(%v) = %d, want %d", c.remaining, got, c.micros)
 		}
 	}
-	if RecordTimeout(0) != 0 || RecordTimeout(3_000_000) != 3*time.Second || RecordTimeout(math.MaxUint64) != math.MaxInt64 {
-		t.Fatal("record timeout conversion changed")
+	durations := []struct {
+		micros    uint64
+		remaining time.Duration
+	}{
+		{micros: 0, remaining: 0},
+		{micros: 3_000_000, remaining: 3 * time.Second},
+		{micros: math.MaxInt64 / 1000, remaining: math.MaxInt64 / 1000 * time.Microsecond},
+		{micros: math.MaxInt64/1000 + 1, remaining: math.MaxInt64},
+		{micros: math.MaxUint64, remaining: math.MaxInt64},
+	}
+	for _, c := range durations {
+		if got := RecordTimeout(c.micros); got != c.remaining {
+			t.Fatalf("RecordTimeout(%d) = %v, want %v", c.micros, got, c.remaining)
+		}
 	}
 }

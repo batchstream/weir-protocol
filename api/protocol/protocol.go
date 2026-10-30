@@ -239,8 +239,11 @@ func TimeoutMicros(remaining time.Duration) uint64 {
 	if remaining <= time.Microsecond {
 		return 1
 	}
-	micros := (remaining + time.Microsecond - 1) / time.Microsecond
-	return uint64(micros)
+	micros := uint64(remaining / time.Microsecond)
+	if remaining%time.Microsecond != 0 {
+		micros++
+	}
+	return micros
 }
 
 // ValidateExecuteResponse validates one indexed event and rejects unknown fields
