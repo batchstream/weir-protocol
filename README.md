@@ -1,5 +1,7 @@
 # Weir public protocol
 
+[![CI](https://github.com/batchstream/weir-protocol/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/batchstream/weir-protocol/actions/workflows/ci.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/batchstream/weir-protocol.svg)](https://pkg.go.dev/github.com/batchstream/weir-protocol) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Shared public schemas, generated Go types and validation for Weir servers and
 clients. Requires Go 1.27.3.
 
