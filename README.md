@@ -1,20 +1,6 @@
-<p align="center">
-  <img src=".github/assets/banner.svg" alt="weir-protocol: shared schemas and validation for Weir." width="100%">
-</p>
-
-<p align="center">
-  <a href="https://github.com/batchstream/weir-protocol/actions/workflows/ci.yml"><img src="https://github.com/batchstream/weir-protocol/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/batchstream/weir-protocol/actions/workflows/vulnerabilities.yml"><img src="https://github.com/batchstream/weir-protocol/actions/workflows/vulnerabilities.yml/badge.svg?branch=main" alt="Vulnerabilities"></a>
-  <a href="https://pkg.go.dev/github.com/batchstream/weir-protocol"><img src="https://pkg.go.dev/badge/github.com/batchstream/weir-protocol.svg" alt="Go Reference"></a>
-  <a href="https://github.com/batchstream/weir-protocol/releases/latest"><img src="https://img.shields.io/github/v/release/batchstream/weir-protocol" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/batchstream/weir">Server</a> &nbsp;·&nbsp; <a href="https://github.com/batchstream/weir-go">Go SDK</a> &nbsp;·&nbsp; <strong>Protocol</strong> &nbsp;·&nbsp; <a href="https://github.com/batchstream/weir-charts">Helm chart</a> &nbsp;·&nbsp; <a href="https://github.com/batchstream/weir-tests">System tests</a>
-</p>
-
 # Weir public protocol
+
+[![CI](https://github.com/batchstream/weir-protocol/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/batchstream/weir-protocol/actions/workflows/ci.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/batchstream/weir-protocol.svg)](https://pkg.go.dev/github.com/batchstream/weir-protocol) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Shared public schemas, generated Go types and validation for Weir servers and
 clients. Requires Go 1.27.3.
@@ -230,9 +216,3 @@ The workflow accepts only stable `vMAJOR.MINOR.PATCH` versions, runs CI on the
 `main` commit, then creates the version tag at that commit and its GitHub release.
 It refuses a version already tagged at another commit. Protocol consumers should
 pin the published version rather than a branch name.
-
-## Contributing and license
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and report
-vulnerabilities as described in [SECURITY.md](SECURITY.md). This repository is
-released under the [MIT License](LICENSE).
