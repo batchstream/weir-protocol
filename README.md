@@ -17,12 +17,14 @@ client or to change the protocol.
 | --- | --- |
 | `api/weir/v1/store.proto` | The public schema |
 | `api/weir/v1` | Generated Go types for the `weir.v1.StoreService.Execute` RPC |
-| `api/protocol` | Validation of envelopes, Store names, resources, records and Native requests |
+| `api/protocol` | Validation of requests and responses: envelopes, Store names, resources, records and Native |
 
 ### Terms
 
 | Term | Meaning |
 | --- | --- |
+| Store | A named backend connection on a Weir server. Every request names a Store. |
+| Resource | The path of one record in a Store, made of percent-encoded segments. `s:hello` is the string key `hello`. |
 | Execute | The only RPC. It is a bidirectional stream. One stream selects one Store and one operation kind. |
 | Record | One Read or Mutate request. The first record index is 1. Each later record adds 1. |
 | Result | The response to one record. Results arrive in completion order, so match them by index. |
@@ -48,7 +50,7 @@ This encodes a resource path and validates it.
 mkdir hello
 cd hello
 go mod init example.com/hello
-go get github.com/batchstream/weir-protocol/api/protocol@v0.17.0
+go get github.com/batchstream/weir-protocol/api/protocol@v0.17.1
 ```
 
 **Step 2.** Save this as `main.go`.
@@ -94,7 +96,8 @@ my%20db/records/s:hello
 | --- | --- |
 | [Semantics](docs/semantics.md) | Streams, deadlines, cancellation, mutations, Lua, Native and validation rules |
 | [Development](docs/development.md) | Module boundaries, code generation and releases |
-| [API reference](https://pkg.go.dev/github.com/batchstream/weir-protocol) | Every exported type and function |
+| [`api/protocol` reference](https://pkg.go.dev/github.com/batchstream/weir-protocol/api/protocol) | Every validation function |
+| [`api/weir/v1` reference](https://pkg.go.dev/github.com/batchstream/weir-protocol/api/weir/v1) | Every generated type |
 
 ## Development
 
