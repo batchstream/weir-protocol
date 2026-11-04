@@ -25,7 +25,7 @@ go vet ./...
 ```
 
 Default tests use in-memory protocol data. To regenerate code, install the
-[exact tool versions](README.md#generate), then run `./scripts/generate.sh` and
+[exact tool versions](docs/development.md#generate), then run `./scripts/generate.sh` and
 `git diff --exit-code`.
 
 ## Prepare a pull request

@@ -1,0 +1,188 @@
+# Protocol semantics
+
+The rules every Weir server and client follows on the wire.
+
+## Packages
+
+- `api/weir/v1`: the bidirectional `weir.v1.StoreService.Execute` RPC for Read,
+  Mutate, and Native. Clients send it to a Weir server that hosts the Store; any
+  other server fails the RPC with NOT_FOUND.
+- `api/protocol`: common envelope, Store name, resource, record, and Native
+  validation.
+
+The public schema lives in `api/weir/v1/store.proto`. Servers and SDKs consume
+the module's generated Go types.
+
+## Streaming semantics
+
+Execute selects one Store and operation kind for its lifetime. Each Read or
+Mutate request carries one record. Servers aggregate admitted records into
+database batches; clients send and consume incrementally without collecting a
+wire batch. The protocol imposes no item or payload-size limit on business calls
+or individual records; servers may bound the size of one message. Backend
+protocols govern accepted documents and commands. Native carries a required
+opaque Document. NativeHead carries optional opaque metadata and a content type
+for subsequent body chunks. Request and metadata bytes are opaque to the public
+protocol. Their content types select adapter-owned formats; new adapters need no
+protobuf fields or schema changes. Empty request data is permitted. Unknown
+valid content types are left to the selected adapter.
+
+### Messages
+
+Each gRPC message, `ExecuteRequests` or `ExecuteResponses`, carries one or more
+requests or responses in stream order. A peer handles each exactly as if it came
+in a message of its own, so a sender packs everything it has ready into one
+message instead of paying for a message per record. `ValidateExecuteRequests`
+and `ValidateExecuteResponses` check a message's own envelope; its requests and
+responses are validated one at a time as they are applied.
+
+### Request validation and record indexes
+
+Each request is validated before execution. A record the server cannot admit,
+such as one its adapter rejects or one sent while the Store drains, receives its
+own failed result, NOT_STARTED for a mutation, and the stream continues. A
+request that fails `ValidateExecuteRequest`, changes the Store or kind, breaks
+the index sequence or cancels a record not yet sent fails the RPC with
+INVALID_ARGUMENT after the results of the records admitted before it. A record
+without a result when the RPC fails may still have effects. The first record
+index is 1; every later record advances it by one. UINT64_MAX is invalid. Each
+record receives at most one ExecuteResponse with its ordinal and typed result,
+in completion order, so consumers match results by index. One stream can
+therefore carry the records of independent callers without a slow or failed
+record holding back the others. A client that shares a stream validates each
+record before sending it, since an invalid request ends the stream for every
+caller on it.
+
+### Record deadlines
+
+`timeout_micros` optionally bounds one Read or Mutate record from the moment
+the server reads it; time spent in transport buffers is not counted, so clients
+still enforce their own deadline. A record still queued when it expires fails
+with DEADLINE_EXCEEDED, NOT_STARTED for a mutation; an executing record reports
+the evidence its cancellation leaves. Zero sets no record deadline. Native
+requires zero and uses the RPC deadline. `RecordTimeout` and `TimeoutMicros`
+convert between the field and Go durations without shortening or disabling a
+caller's budget.
+
+### Cancellation
+
+A request that sets only `store_name` and `cancel_index` cancels an earlier
+record of the same stream. It does not advance the index or receive a response.
+The canceled record still receives its own result: a CANCELLED failure,
+NOT_STARTED for a mutation, while it is still queued; the evidence its
+cancellation leaves while it executes; and its ordinary result once it has
+completed. Cancel requests let a stream shared by several callers release the
+work of one caller who stops waiting. Native streams use RPC cancellation
+instead.
+
+### Record window
+
+Each stream has room for `RecordWindow` (32) records without results, whatever
+the Store queue holds. A client that never has more than 32 records without
+results is never held back by the server's window, so its cancel requests take
+effect as soon as they arrive; a further record waits until a result frees room.
+
+### Consistency checks
+
+Servers and clients enforce Store/kind consistency and index sequences. Stateless
+validators check each envelope and nested fields. Requests and responses reject unknown
+fields throughout the message tree. Responses require declared result/event
+variants, enum values and valid completion evidence.
+
+### Read results
+
+ReadResult.missing confirms document absence after a successful read.
+TARGET_NOT_FOUND reports a required adapter-owned target that does not exist; it is
+an individual Failure, not a missing document result.
+Clients can consume results incrementally; SDK convenience collectors may retain
+results at the caller's request. Each response confirms one record.
+
+### Store names and resources
+
+Store names and resource paths are separate fields. Resource paths use canonical percent-encoded segments without a scheme
+or leading slash. `ParseRelativeResource` validates and decodes these paths;
+`EncodeSegment` constructs individual segments. NativeRequest permits an empty
+resource for backend-root operations. Nonempty Native resources are canonical
+prefixes; the request bytes select the backend command, path and parameters.
+Weir imposes no Native operation allowlist; backend authorization applies.
+
+### Mutations
+
+A mutation stream is not a transaction. Mutations to the same resource execute in
+input order across requests, including after a failed item; different resources may
+run in parallel. Ordering across streams follows the database semantics. APPLIED also includes satisfied no-op semantics such as Lua keep or deleting an
+already missing document. An APPLIED result may also
+carry a subsequent acknowledgement failure; other outcomes require a Failure.
+An individually received MutationResult retains its application evidence if the
+stream later fails. A submitted mutation without a result may have applied.
+Clients must never automatically replay unacknowledged mutations.
+
+### Mutation options
+
+`MutateRequest.options` carries `MutationOptions` uniformly for every action.
+Its `visibility` uses `MutationVisibility`: absent options or the zero value
+APPLICATION_ACKNOWLEDGED require application acknowledgement. QUERY_VISIBLE
+additionally confirms visibility to subsequent normal queries when APPLIED has no
+Failure. APPLIED with a Failure retains application evidence but does not confirm
+visibility, so replay is still unsafe. Search adapters wait for backend refresh;
+adapters without deferred query visibility satisfy this when the mutation is
+acknowledged. No-op mutations must also establish the requested visibility.
+Unknown option fields and undeclared visibility values are rejected.
+
+### Lua transforms
+
+LuaTransform supplies Source and optional Input with Lua 5.4 semantics and no
+runtime selector. The entry point, return actions, helper set and document
+conversion rules are stable parts of the contract.
+Source returns exactly one function, called as `function(current, incoming)`.
+Missing current or omitted Input is nil; documents are ordinary Lua tables.
+The callback returns exactly one object to create/replace, or an explicit
+`weir.keep()`, `weir.delete()` or `weir.reject(message)` action. Keep/delete on
+missing are successful no-ops; reject is PRECONDITION_FAILED/NOT_APPLIED.
+Nil, missing/multiple returns, arrays and scalar results are invalid. A callback
+error or invalid result never writes. Explicit null is
+`weir.null()`. See the server's [Lua guide](https://github.com/batchstream/weir/blob/main/docs/lua.md).
+
+## Native backend commands
+
+Native accepts exactly one Command at index 1, followed by client half-close.
+Every event uses index 1. A complete response emits NativeHead, zero or more
+nonempty body chunks, and NativeEnd with RESPONSE_COMPLETE; its body may be empty.
+A failure may emit NativeEnd before any head. Body chunks always follow a head.
+NativeHead contains optional opaque metadata and the body's content type.
+NativeEnd reports response transport completion, never whether a mutation was
+applied. Its evidence may be retained when a later RPC error occurs. Backend
+error replies remain native response bodies; clients interpret backend status
+and application semantics. Clients must not automatically replay Native calls
+whose effects are unknown.
+
+### Queries, scans and counts
+
+Queries, scans, and counts use Native backend commands. The client owns native
+filters, projection, sorting, page sizes, offsets, cursors, and counting semantics.
+For MongoDB, send ordered BSON commands such as find, aggregate, getMore, and
+count. For Search, send native HTTP requests such as _search, _count, and PIT
+requests. Responses retain the complete native reply, including cursor, hit, and
+count metadata; Weir does not extract documents or synthesize a page checkpoint.
+Clients manage continuation requests and backend cursor/PIT cleanup. Native does
+not promise cross-call session affinity, cursor portability, a snapshot, or a
+Weir continuation-token format. Backend protocols and permissions apply.
+
+### Native compared with Read and Mutate
+
+Read and Mutate provide record batching, per-resource ordering, and application
+evidence. Native is the direct opaque command path; it does not run record
+batching or Lua transforms. This keeps query execution and pagination policy in
+the backend and its client.
+
+## Validation rules
+
+Requests and responses reject unknown fields throughout the message tree.
+FailureCode accepts only declared nonzero values. MutationOutcome and
+NativeCompletion require known evidence values. A known Failure never discards
+APPLIED evidence or establishes retry safety.
+
+Native content types and backend expressions retain adapter-owned
+semantics. Each adapter documents its accepted formats and limits; opaque bytes
+do not waive that contract. Lua helpers, conversions and execution semantics
+follow the Lua contract above.
