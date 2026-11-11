@@ -38,7 +38,7 @@ The server and the SDK depend on this module. This module depends on neither.
 
 | Item | Requirement |
 | --- | --- |
-| Go | 1.27.3 |
+| Go | 1.27.4 |
 
 ## Quick start
 
